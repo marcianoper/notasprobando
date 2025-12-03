@@ -85,7 +85,7 @@
 </head>
 <body>
 <header>
-  <h1>VDC360° · Notas a Crédito (Slots A/B + Reporte Diario)</h1>
+  <h1>VDC360° · Notas a Crédito (Slots A/B + Reporte Diario) </h1>
 </header>
 
 <main>
@@ -291,6 +291,31 @@ function todayISO(){ const d=new Date(); const z=d.getTimezoneOffset()*60000; re
 function addDays(dateISO, days){ const d=new Date(dateISO); d.setDate(d.getDate()+Number(days||0)); const z=d.getTimezoneOffset()*60000; return new Date(d - z).toISOString().slice(0,10); }
 function genFolio(){ const d=new Date(); const pad=n=>String(n).padStart(2,'0'); return `CVC-${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; }
 function csvEscape(s){ return '"'+String(s).replaceAll('"','""')+'"'; }
+
+/* === NUEVO: construir observaciones automáticas por producto === */
+function buildAutoObsFromDetalle(det){
+  if(!det || !det.length) return '';
+  const grupos = {};
+  det.forEach(d=>{
+    const prod = d.producto || 'Sin producto';
+    if(!grupos[prod]){
+      grupos[prod] = { kg:0, pzas:0, tienePzas:false };
+    }
+    grupos[prod].kg += Number(d.cantidad || 0);
+    if(d.piezas != null){
+      grupos[prod].pzas += Number(d.piezas || 0);
+      grupos[prod].tienePzas = true;
+    }
+  });
+
+  const lineas = Object.entries(grupos).map(([prod, g])=>{
+    const kgTxt = to2(g.kg);
+    const pzasTxt = g.tienePzas ? ` / ${g.pzas} pzas` : '';
+    return `TOTAL ${prod} = ${kgTxt}${pzasTxt}`;
+  });
+
+  return lineas.join('\n');
+}
 
 /* ========================= STATE ========================= */
 let CLIENTES=[], PRODUCTOS=[], PRECIOS={};
@@ -629,7 +654,16 @@ async function renderVista(){
   vFolio.textContent = nota.folio; 
   vEstado.textContent = nota.estado||'abierta'; 
   vSaldo.textContent = to2(nota.saldo||0);
-  notaObs.value = nota.observaciones || '';
+
+  /* === NUEVO: Observaciones automáticas por producto === */
+  const autoObs = buildAutoObsFromDetalle(det || []);
+  notaObs.value = autoObs;
+  try{
+    await supabase
+      .from('notas_credito')
+      .update({ observaciones: autoObs || null })
+      .eq('id', nota.id);
+  }catch(e){ console.error(e); }
 
   vistaBody.innerHTML = (det||[]).map(d=>`
     <tr data-id="${d.id}">
@@ -1236,3 +1270,4 @@ async function cerrarNota(){
 </script>
 </body>
 </html>
+
