@@ -23,6 +23,7 @@
 
       --warn:#f59e0b;
       --bad:#ef4444;
+      --info:#0ea5e9;
 
       --shadow: 0 18px 50px rgba(2,6,23,.10);
       --shadow2: 0 10px 28px rgba(2,6,23,.10);
@@ -192,57 +193,104 @@
       color:#1f1300;
       box-shadow:0 14px 28px rgba(245,158,11,.20);
     }
+    button.info{
+      background: linear-gradient(180deg, #38bdf8, #0ea5e9);
+      color:#082f49;
+      box-shadow:0 14px 28px rgba(14,165,233,.20);
+    }
     button:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
 
-    .comboWrap{position:relative}
-    .comboInputRow{display:flex;gap:8px;align-items:stretch}
-    .comboInputRow input{flex:1}
-    .comboBtn{
-      width:auto;
-      min-width:54px;
-      padding:0 12px;
-      border-radius:16px;
-      border:1px solid rgba(15,23,42,.10);
-      background:rgba(255,255,255,.72);
-      cursor:pointer;
-      font-weight:1100;
-      box-shadow:0 10px 24px rgba(2,6,23,.08);
+    .quickBar{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+      margin-top:12px;
     }
-    .comboBtn:hover{filter:brightness(1.02)}
-    .comboList{
-      position:absolute;
-      left:0; right:0;
-      top:calc(100% + 10px);
-      background:#fff;
+    @media(max-width:760px){
+      .quickBar{grid-template-columns:1fr;}
+    }
+    .quickBtn{
+      min-height:58px;
+      font-size:17px;
+      font-weight:1100;
+      border-radius:18px;
+    }
+
+    .selectedClient{
+      margin-top:12px;
+      border:1px solid rgba(34,197,94,.22);
+      background:linear-gradient(180deg, rgba(34,197,94,.12), rgba(34,197,94,.06));
+      border-radius:20px;
+      padding:14px;
+      box-shadow:0 16px 40px rgba(22,163,74,.08);
+    }
+    .selectedClient .nm{
+      font-weight:1200;
+      font-size:20px;
+      line-height:1.1;
+    }
+    .selectedClient .meta{
+      margin-top:6px;
+      font-size:13px;
+      color:#14532d;
+      font-weight:900;
+    }
+
+    .recentWrap{
+      margin-top:14px;
+    }
+    .recentHead{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:8px;
+      flex-wrap:wrap;
+    }
+    .recentGrid{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:10px;
+    }
+    @media(max-width:980px){ .recentGrid{grid-template-columns:repeat(3,1fr)} }
+    @media(max-width:760px){ .recentGrid{grid-template-columns:repeat(2,1fr)} }
+    @media(max-width:520px){ .recentGrid{grid-template-columns:1fr} }
+
+    .recentCard{
       border:1px solid rgba(15,23,42,.10);
       border-radius:18px;
-      box-shadow:0 30px 80px rgba(2,6,23,.18);
-      max-height:340px;
-      overflow:auto;
-      display:none;
-      z-index:50;
-    }
-    .comboList.open{display:block}
-    .comboItem{
-      padding:12px 12px;
-      border-bottom:1px solid rgba(15,23,42,.08);
+      background:rgba(255,255,255,.78);
+      padding:12px;
       cursor:pointer;
-      display:flex;
-      align-items:flex-start;
-      gap:12px;
+      box-shadow:0 10px 24px rgba(2,6,23,.06);
+      transition:transform .08s ease, box-shadow .12s ease, background .12s ease;
     }
-    .comboItem:last-child{border-bottom:0}
-    .comboItem:hover{background:rgba(34,197,94,.08)}
-    .comboItem .dot{
-      width:10px;height:10px;border-radius:999px;
-      margin-top:6px;
-      background:rgba(34,197,94,.70);
-      box-shadow:0 0 0 4px rgba(34,197,94,.12);
-      flex:0 0 auto;
+    .recentCard:hover{
+      transform:translateY(-1px);
+      box-shadow:0 16px 34px rgba(2,6,23,.10);
+      background:#fff;
     }
-    .comboItem .nm{font-weight:1100;line-height:1.15}
-    .comboItem .ph{font-size:12px;color:var(--muted);margin-top:4px}
-    .comboEmpty{padding:12px;color:var(--muted);font-size:12px}
+    .recentCard .nm{
+      font-weight:1100;
+      font-size:15px;
+      line-height:1.15;
+    }
+    .recentCard .ph{
+      margin-top:5px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    .recentCard .badge{
+      display:inline-flex;
+      margin-top:8px;
+      padding:6px 9px;
+      border-radius:999px;
+      background:rgba(34,197,94,.10);
+      color:#166534;
+      border:1px solid rgba(34,197,94,.18);
+      font-size:11px;
+      font-weight:1100;
+    }
 
     #qrClienteBox{
       display:grid;place-items:center;
@@ -369,8 +417,181 @@
     .detailModal th{position:sticky; top:0; z-index:2}
     .detailModal .miniCard{box-shadow:none}
 
+    .pickerBg{
+      position:fixed; inset:0;
+      background:rgba(2,6,23,.58);
+      display:none;
+      place-items:center;
+      z-index:95;
+      padding:12px;
+    }
+    .pickerModal{
+      width:min(980px,100%);
+      max-height:92vh;
+      overflow:hidden;
+      background:rgba(255,255,255,.96);
+      border-radius:28px;
+      border:1px solid rgba(255,255,255,.35);
+      box-shadow:0 40px 120px rgba(0,0,0,.35);
+      display:flex;
+      flex-direction:column;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+    .pickerTop{
+      padding:16px;
+      border-bottom:1px solid rgba(15,23,42,.08);
+      background:linear-gradient(180deg, rgba(255,255,255,.90), rgba(248,250,252,.92));
+    }
+    .pickerTitle{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+    }
+    .pickerTitle h4{
+      margin:0;
+      font-size:24px;
+      font-weight:1200;
+    }
+    .pickerSearch{
+      margin-top:12px;
+    }
+    .pickerSearch input{
+      min-height:58px;
+      font-size:18px;
+      border-radius:18px;
+    }
+    .pickerBody{
+      padding:14px;
+      overflow:auto;
+      flex:1;
+      background:linear-gradient(180deg, rgba(248,250,252,.90), rgba(255,255,255,.88));
+    }
+    .pickerSection{
+      margin-bottom:18px;
+    }
+    .pickerSection h5{
+      margin:0 0 10px;
+      font-size:14px;
+      font-weight:1200;
+      color:var(--muted);
+      letter-spacing:.3px;
+      text-transform:uppercase;
+    }
+    .pickerGrid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:12px;
+    }
+    @media(max-width:960px){ .pickerGrid{grid-template-columns:repeat(2,1fr)} }
+    @media(max-width:620px){ .pickerGrid{grid-template-columns:1fr} }
+
+    .pickerCard{
+      border:1px solid rgba(15,23,42,.10);
+      border-radius:22px;
+      background:#fff;
+      padding:14px;
+      box-shadow:0 12px 28px rgba(2,6,23,.08);
+      cursor:pointer;
+      transition:transform .08s ease, box-shadow .12s ease, border-color .12s ease;
+      min-height:100px;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+    }
+    .pickerCard:hover{
+      transform:translateY(-1px);
+      box-shadow:0 18px 38px rgba(2,6,23,.12);
+      border-color:rgba(34,197,94,.28);
+    }
+    .pickerCard .nm{
+      font-size:20px;
+      font-weight:1200;
+      line-height:1.1;
+    }
+    .pickerCard .ph{
+      font-size:13px;
+      color:var(--muted);
+      margin-top:6px;
+    }
+    .pickerCard .meta{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:10px;
+    }
+    .pickerCard .meta span{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:6px 10px;
+      border-radius:999px;
+      background:rgba(34,197,94,.08);
+      border:1px solid rgba(34,197,94,.15);
+      font-size:11px;
+      font-weight:1100;
+      color:#166534;
+    }
+
+    .emptyState{
+      padding:18px;
+      border:1px dashed rgba(15,23,42,.16);
+      border-radius:18px;
+      text-align:center;
+      color:var(--muted);
+      background:rgba(255,255,255,.65);
+    }
+
+    .log{
+      white-space:pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:13px;
+      padding:12px;
+      background:rgba(248,250,252,.92);
+      border:1px solid rgba(15,23,42,.10);
+      border-radius:16px;
+      margin-top:8px;
+    }
+    .okTxt{color:#166534;font-weight:1000}
+    .badTxt{color:#991b1b;font-weight:1000}
+    .warnTxt{color:#92400e;font-weight:1000}
+    .mutedTxt{color:var(--muted)}
+
     ul{margin:10px 0 0 18px}
     li{margin:6px 0}
+
+    #filePick{
+      display:none;
+    }
+
+    #reader{
+      border-radius:18px;
+      overflow:hidden;
+      background:#fff;
+      border:1px solid rgba(15,23,42,.10);
+      min-height:120px;
+    }
+
+    .helperRow{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:12px;
+    }
+    .helperBadge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 12px;
+      border-radius:999px;
+      background:rgba(14,165,233,.08);
+      border:1px solid rgba(14,165,233,.15);
+      color:#075985;
+      font-size:12px;
+      font-weight:1100;
+    }
   </style>
 </head>
 
@@ -399,7 +620,7 @@
       <div class="titleRow">
         <div>
           <h3>1) Cliente</h3>
-          <div class="sub">Cada cliente tiene su QR único para cargarlo automático.</div>
+          <div class="sub">Optimizado para tablet: recientes, búsqueda rápida y selección táctil.</div>
         </div>
         <div class="pills">
           <span class="pill" id="stCliente"><span class="miniDot"></span>Cliente: —</span>
@@ -408,19 +629,22 @@
         </div>
       </div>
 
+      <div class="quickBar">
+        <button id="btnOpenPicker" class="quickBtn info" type="button">🔎 Buscar cliente</button>
+        <button id="btnFocusRecientes" class="quickBtn ghost" type="button">⚡ Clientes recientes</button>
+        <button id="btnModoNuevo" class="quickBtn secondary" type="button">➕ Cliente nuevo</button>
+      </div>
+
+      <div class="selectedClient" id="selectedClientBox">
+        <div class="nm" id="selectedClientName">Sin cliente seleccionado</div>
+        <div class="meta" id="selectedClientMeta">Selecciona un cliente para continuar.</div>
+      </div>
+
       <div class="grid">
         <div>
           <label>Nombre</label>
-
-          <div class="comboWrap" id="comboWrap">
-            <div class="comboInputRow">
-              <input id="nombre" placeholder="Toca para ver todos, o escribe para buscar..." autocomplete="off" />
-              <button id="btnOpenCombo" class="comboBtn" type="button" aria-label="Abrir lista">▾</button>
-            </div>
-            <div id="comboList" class="comboList" role="listbox" aria-label="Lista de clientes"></div>
-          </div>
-
-          <div class="muted">Tip: toca el nombre para ver todos; escribe para filtrar.</div>
+          <input id="nombre" placeholder="Escribe nombre para nuevo cliente o búsqueda rápida..." autocomplete="off" />
+          <div class="muted">En tablet conviene tocar “Buscar cliente” para ver tarjetas grandes.</div>
         </div>
 
         <div>
@@ -437,6 +661,17 @@
       </div>
 
       <div id="msg" class="muted" style="margin-top:10px">—</div>
+
+      <div class="recentWrap" id="recentSection">
+        <div class="recentHead">
+          <div>
+            <h3 style="font-size:17px;margin:0">Clientes recientes</h3>
+            <div class="sub" style="margin-top:4px">Toca uno para cargarlo al instante.</div>
+          </div>
+          <button id="btnClearRecent" class="ghost" type="button" style="width:auto">Limpiar recientes</button>
+        </div>
+        <div class="recentGrid" id="recentGrid"></div>
+      </div>
 
       <div class="grid">
         <div>
@@ -478,6 +713,12 @@
           <button class="ghost" id="toggle" type="button">Iniciar cámara</button>
           <button class="warn" id="switchCam" type="button" style="display:none">Cambiar cámara</button>
         </div>
+      </div>
+
+      <div class="helperRow">
+        <span class="helperBadge">📱 Tablet: toca “Iniciar cámara”</span>
+        <span class="helperBadge">🔫 Pistola: selecciona cliente y escanea</span>
+        <span class="helperBadge">📸 Si no lee, usa foto</span>
       </div>
 
       <div id="reader" style="width:100%;margin-top:10px"></div>
@@ -608,6 +849,33 @@
   </div>
 </div>
 
+<div class="pickerBg" id="pickerBg">
+  <div class="pickerModal">
+    <div class="pickerTop">
+      <div class="pickerTitle">
+        <div>
+          <h4>Seleccionar cliente</h4>
+          <div class="sub">Pensado para tablet: toca una tarjeta grande.</div>
+        </div>
+        <button id="btnCerrarPicker" class="ghost" type="button" style="width:auto">Cerrar</button>
+      </div>
+      <div class="pickerSearch">
+        <input id="pickerSearch" placeholder="Buscar por nombre o últimos dígitos del teléfono..." autocomplete="off" />
+      </div>
+    </div>
+    <div class="pickerBody" id="pickerBody">
+      <div class="pickerSection">
+        <h5>Recientes</h5>
+        <div class="pickerGrid" id="pickerRecentGrid"></div>
+      </div>
+      <div class="pickerSection">
+        <h5>Resultados</h5>
+        <div class="pickerGrid" id="pickerResultsGrid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
   const SUPABASE_URL = "https://eqynjddcosvdqjzztznn.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxeW5qZGRjb3N2ZHFqenp0em5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYxMzYwMzIsImV4cCI6MjA3MTcxMjAzMn0.Q51wsGelUvxRfqsMYRY5JduCGyZ7s6AzOhqsRf3kOhk";
@@ -616,7 +884,23 @@
   const T_CLIENTES = "clientes";
   const ADMIN_PIN = "1234";
   const ROLE_KEY = "vdc_role_ui";
+  const RECENT_KEY = "vdc_recent_clients";
   let role = localStorage.getItem(ROLE_KEY) || "op";
+
+  let currentClient = null;
+  let clientsCache = [];
+  let scanner = null;
+  let running = false;
+  let cameras = [];
+  let camIndex = 0;
+  let busy = false;
+  const BUSY_COOLDOWN_MS = 900;
+
+  let ticketItemsUi = [];
+  let ticketItemsInv = [];
+  let lastClientQrUrl = "";
+
+  const BOX_FULL_KG = 27.22;
 
   const $ = (id)=>document.getElementById(id);
 
@@ -645,10 +929,6 @@
   const opToast = $("opToast");
   const out = $("out");
 
-  const comboWrap = $("comboWrap");
-  const comboList = $("comboList");
-  const btnOpenCombo = $("btnOpenCombo");
-
   const btnVerDetalle = $("btnVerDetalle");
   const detailBg = $("detailBg");
   const btnCerrarDetalle = $("btnCerrarDetalle");
@@ -657,20 +937,19 @@
 
   const telHint = $("telHint");
 
-  let currentClient = null;
-  let clientsCache = [];
-  let scanner = null;
-  let running = false;
-  let cameras = [];
-  let camIndex = 0;
-  let busy = false;
-  const BUSY_COOLDOWN_MS = 900;
+  const btnOpenPicker = $("btnOpenPicker");
+  const btnFocusRecientes = $("btnFocusRecientes");
+  const btnModoNuevo = $("btnModoNuevo");
+  const btnClearRecent = $("btnClearRecent");
+  const recentGrid = $("recentGrid");
+  const selectedClientName = $("selectedClientName");
+  const selectedClientMeta = $("selectedClientMeta");
 
-  let ticketItemsUi = [];
-  let ticketItemsInv = [];
-  let lastClientQrUrl = "";
-
-  const BOX_FULL_KG = 27.22;
+  const pickerBg = $("pickerBg");
+  const btnCerrarPicker = $("btnCerrarPicker");
+  const pickerSearch = $("pickerSearch");
+  const pickerRecentGrid = $("pickerRecentGrid");
+  const pickerResultsGrid = $("pickerResultsGrid");
 
   function normalizeLine(s){ return String(s||"").replace(/\s+/g," ").trim(); }
   function toNum(s){
@@ -682,6 +961,11 @@
     return String(s||"")
       .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
       .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  }
+  function maskPhone(s){
+    const t = cleanPhone(s);
+    if(t.length < 4) return "—";
+    return "••••••" + t.slice(-4);
   }
 
   function logAdmin(txt, cls=""){
@@ -709,6 +993,17 @@
     $("stCliente").innerHTML = `<span class="miniDot"></span>Cliente: ${escapeHtml(currentClient ? (currentClient.nombre || "—") : "—")}`;
     $("stPuntos").innerHTML  = `<span class="miniDot"></span>Puntos: ${escapeHtml(currentClient ? String(currentClient.puntos ?? "—") : "—")}`;
     $("stSaldo").innerHTML   = `<span class="miniDot"></span>Saldo kg: ${escapeHtml(currentClient ? Number(currentClient.saldo_kg||0).toFixed(3) : "—")}`;
+
+    if(currentClient){
+      selectedClientName.textContent = currentClient.nombre || "Cliente";
+      const telText = role === "admin"
+        ? (currentClient.telefono || "Sin teléfono")
+        : maskPhone(currentClient.telefono || "");
+      selectedClientMeta.textContent = `Tel: ${telText} · Puntos: ${Number(currentClient.puntos || 0)} · Saldo kg: ${Number(currentClient.saldo_kg || 0).toFixed(3)}`;
+    }else{
+      selectedClientName.textContent = "Sin cliente seleccionado";
+      selectedClientMeta.textContent = "Selecciona un cliente para continuar.";
+    }
   }
 
   function applyRoleUI(){
@@ -744,6 +1039,9 @@
     closeModal();
     $("tel").value = "";
     $("tel").type = "text";
+    renderStatus();
+    renderRecentClients();
+    renderPicker();
   });
 
   btnSetAdmin.addEventListener("click", ()=>{
@@ -763,6 +1061,9 @@
       localStorage.setItem(ROLE_KEY, role);
       applyRoleUI();
       closeModal();
+      renderStatus();
+      renderRecentClients();
+      renderPicker();
     }else{
       pinMsg.style.color = "#ef4444";
       pinMsg.textContent = "PIN incorrecto.";
@@ -801,27 +1102,20 @@
     if(txt) txt.innerHTML = `URL en QR: <code>${url}</code>`;
   }
 
-  const btnCopiarUrl = $("btnCopiarUrl");
-  const btnAbrirUrl = $("btnAbrirUrl");
+  $("btnCopiarUrl").addEventListener("click", async ()=>{
+    if(!lastClientQrUrl) return setMsg("bad","No hay URL. Selecciona cliente primero.");
+    try{
+      await navigator.clipboard.writeText(lastClientQrUrl);
+      setMsg("ok","URL copiada ✅");
+    }catch{
+      setMsg("bad","No pude copiar (permiso del navegador).");
+    }
+  });
 
-  if(btnCopiarUrl){
-    btnCopiarUrl.addEventListener("click", async ()=>{
-      if(!lastClientQrUrl) return setMsg("bad","No hay URL. Selecciona cliente primero.");
-      try{
-        await navigator.clipboard.writeText(lastClientQrUrl);
-        setMsg("ok","URL copiada ✅");
-      }catch{
-        setMsg("bad","No pude copiar (permiso del navegador).");
-      }
-    });
-  }
-
-  if(btnAbrirUrl){
-    btnAbrirUrl.addEventListener("click", ()=>{
-      if(!lastClientQrUrl) return setMsg("bad","No hay URL. Selecciona cliente primero.");
-      window.open(lastClientQrUrl, "_blank");
-    });
-  }
+  $("btnAbrirUrl").addEventListener("click", ()=>{
+    if(!lastClientQrUrl) return setMsg("bad","No hay URL. Selecciona cliente primero.");
+    window.open(lastClientQrUrl, "_blank");
+  });
 
   function canonSku(productoOriginal){
     let t = String(productoOriginal || "")
@@ -1095,9 +1389,183 @@
   function openDetalle(){ renderCompraDetallada(); detailBg.style.display = "grid"; }
   function closeDetalle(){ detailBg.style.display = "none"; }
 
-  $("btnVerDetalle").addEventListener("click", ()=>{ if(ticketItemsUi.length) openDetalle(); });
-  $("btnCerrarDetalle").addEventListener("click", closeDetalle);
+  btnVerDetalle.addEventListener("click", ()=>{ if(ticketItemsUi.length) openDetalle(); });
+  btnCerrarDetalle.addEventListener("click", closeDetalle);
   detailBg.addEventListener("click", (e)=>{ if(e.target === detailBg) closeDetalle(); });
+
+  function getRecentClientsIds(){
+    try{
+      const arr = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+      return Array.isArray(arr) ? arr : [];
+    }catch{
+      return [];
+    }
+  }
+
+  function saveRecentClient(client){
+    if(!client?.id) return;
+    const ids = getRecentClientsIds().filter(id => String(id) !== String(client.id));
+    ids.unshift(String(client.id));
+    const finalIds = ids.slice(0, 12);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(finalIds));
+    renderRecentClients();
+    renderPicker();
+  }
+
+  function getRecentClientsObjects(){
+    const ids = getRecentClientsIds();
+    const byId = new Map((clientsCache || []).map(c => [String(c.id), c]));
+    return ids.map(id => byId.get(String(id))).filter(Boolean);
+  }
+
+  function renderRecentClients(){
+    const arr = getRecentClientsObjects();
+
+    if(!arr.length){
+      recentGrid.innerHTML = `<div class="emptyState" style="grid-column:1/-1">Todavía no hay clientes recientes en esta tablet.</div>`;
+      return;
+    }
+
+    recentGrid.innerHTML = arr.map(c => `
+      <div class="recentCard" data-id="${escapeHtml(c.id)}">
+        <div class="nm">${escapeHtml(c.nombre || "—")}</div>
+        <div class="ph">${escapeHtml(role === "admin" ? (c.telefono || "") : maskPhone(c.telefono || ""))}</div>
+        <div class="badge">Puntos: ${Number(c.puntos || 0)}</div>
+      </div>
+    `).join("");
+
+    recentGrid.querySelectorAll(".recentCard").forEach(el=>{
+      el.addEventListener("click", async ()=>{
+        const id = el.getAttribute("data-id");
+        const c = (clientsCache || []).find(x => String(x.id) === String(id));
+        if(!c) return;
+        await selectClient(c, true);
+      });
+    });
+  }
+
+  function openPicker(){
+    pickerBg.style.display = "grid";
+    pickerSearch.value = "";
+    renderPicker();
+    setTimeout(()=> pickerSearch.focus(), 80);
+  }
+
+  function closePicker(){
+    pickerBg.style.display = "none";
+  }
+
+  function buildClientCardHtml(c){
+    return `
+      <div class="pickerCard" data-id="${escapeHtml(c.id)}">
+        <div class="nm">${escapeHtml(c.nombre || "—")}</div>
+        <div class="ph">${escapeHtml(role === "admin" ? (c.telefono || "Sin teléfono") : maskPhone(c.telefono || ""))}</div>
+        <div class="meta">
+          <span>Puntos: ${Number(c.puntos || 0)}</span>
+          <span>Saldo: ${Number(c.saldo_kg || 0).toFixed(3)} kg</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function bindPickerCards(root){
+    root.querySelectorAll(".pickerCard").forEach(el=>{
+      el.addEventListener("click", async ()=>{
+        const id = el.getAttribute("data-id");
+        const c = (clientsCache || []).find(x => String(x.id) === String(id));
+        if(!c) return;
+        await selectClient(c, true);
+        closePicker();
+      });
+    });
+  }
+
+  function renderPicker(){
+    const q = normalizeLine(pickerSearch.value).toLowerCase();
+    const recent = getRecentClientsObjects();
+
+    if(recent.length){
+      pickerRecentGrid.innerHTML = recent.map(buildClientCardHtml).join("");
+      bindPickerCards(pickerRecentGrid);
+    }else{
+      pickerRecentGrid.innerHTML = `<div class="emptyState" style="grid-column:1/-1">Sin recientes todavía.</div>`;
+    }
+
+    let results = [...(clientsCache || [])];
+
+    if(q){
+      results = results.filter(c=>{
+        const nm = normalizeLine(c.nombre || "").toLowerCase();
+        const tel = cleanPhone(c.telefono || "");
+        return nm.includes(q) || tel.includes(q);
+      });
+    }
+
+    results = results.slice(0, 120);
+
+    if(results.length){
+      pickerResultsGrid.innerHTML = results.map(buildClientCardHtml).join("");
+      bindPickerCards(pickerResultsGrid);
+    }else{
+      pickerResultsGrid.innerHTML = `<div class="emptyState" style="grid-column:1/-1">No encontré clientes con esa búsqueda.</div>`;
+    }
+  }
+
+  pickerSearch.addEventListener("input", renderPicker);
+  btnOpenPicker.addEventListener("click", openPicker);
+  btnCerrarPicker.addEventListener("click", closePicker);
+  pickerBg.addEventListener("click", (e)=>{
+    if(e.target === pickerBg) closePicker();
+  });
+
+  btnFocusRecientes.addEventListener("click", ()=>{
+    document.getElementById("recentSection")?.scrollIntoView({ behavior:"smooth", block:"center" });
+  });
+
+  btnModoNuevo.addEventListener("click", ()=>{
+    currentClient = null;
+    $("nombre").value = "";
+    $("tel").value = "";
+    $("tel").type = "text";
+    renderStatus();
+    renderClientQR();
+    setMsg("ok", "Modo nuevo cliente listo.");
+    setTimeout(()=> $("nombre").focus(), 80);
+  });
+
+  btnClearRecent.addEventListener("click", ()=>{
+    localStorage.removeItem(RECENT_KEY);
+    renderRecentClients();
+    renderPicker();
+    setMsg("ok", "Recientes limpiados ✅");
+  });
+
+  async function selectClient(c, focusGun=true){
+    currentClient = c;
+    $("nombre").value = c.nombre || "";
+
+    if(role === "admin"){
+      $("tel").type = "text";
+      $("tel").value = c.telefono || "";
+    }else{
+      $("tel").type = "password";
+      $("tel").value = "";
+    }
+
+    saveRecentClient(c);
+    renderStatus();
+    await renderClientQR();
+    setMsg("ok","Cliente cargado ✅");
+
+    if(focusGun){
+      setTimeout(()=>{
+        if(scanGun){
+          scanGun.focus();
+          scanGun.select?.();
+        }
+      }, 120);
+    }
+  }
 
   async function descontarInventarioConRPC(payload, fingerprint){
     const { data, error } = await sb.rpc('procesar_venta_qr', {
@@ -1146,7 +1614,10 @@
       .eq("id", currentClient.id)
       .single();
 
-    if(cli2) currentClient = cli2;
+    if(cli2){
+      currentClient = cli2;
+      saveRecentClient(cli2);
+    }
 
     renderStatus();
     await renderClientQR();
@@ -1218,7 +1689,15 @@
         showOpToast("ok", "✅ OK — Venta aplicada", `Cliente: ${currentClient?.nombre || "—"}\nTotal: ${kg} kg`);
       }
 
+      setTimeout(()=>{
+        if(scanGun){
+          scanGun.focus();
+          scanGun.select?.();
+        }
+      }, 120);
+
     }catch(e){
+      console.error(e);
       if(role === "admin") logAdmin("ERROR:\n" + (e?.message || String(e)), "badTxt");
       else showOpToast("bad", "Error", "No se pudo procesar el ticket.");
     }finally{
@@ -1229,11 +1708,17 @@
   async function onScanSuccess(decodedText){ await handleDecoded(decodedText); }
 
   async function refreshCameras(){
-    cameras = await Html5Qrcode.getCameras();
-    if(!Array.isArray(cameras)) cameras = [];
-    $("switchCam").style.display = (cameras.length >= 2) ? "block" : "none";
-    const idxBack = cameras.findIndex(c => /back|rear|environment|trasera/i.test(c.label || ""));
-    if(idxBack >= 0) camIndex = idxBack;
+    try{
+      cameras = await Html5Qrcode.getCameras();
+      if(!Array.isArray(cameras)) cameras = [];
+      $("switchCam").style.display = (cameras.length >= 2) ? "block" : "none";
+      const idxBack = cameras.findIndex(c => /back|rear|environment|trasera/i.test(c.label || ""));
+      if(idxBack >= 0) camIndex = idxBack;
+    }catch(err){
+      console.error(err);
+      cameras = [];
+      $("switchCam").style.display = "none";
+    }
   }
 
   async function startWithCurrentCamera(){
@@ -1262,21 +1747,42 @@
       if(role === "admin") logAdmin("Cámara lista. Escanea un ticket.", "muted");
       else showOpToast("ok", "Cámara lista", "Escanea el QR del ticket.");
     }catch(e){
+      console.error(e);
       running = false;
       $("toggle").textContent = "Iniciar cámara";
-      if(role === "admin") logAdmin("No pude iniciar cámara. Revisa permisos y HTTPS.", "badTxt");
-      else showOpToast("bad", "Cámara", "No pude abrir la cámara.");
+      if(role === "admin") logAdmin("No pude iniciar cámara. Revisa permisos, HTTPS y acceso a cámara.", "badTxt");
+      else showOpToast("bad", "Cámara", "No pude abrir la cámara. Revisa permisos del navegador.");
     }
   }
 
-  async function start(){ if(running) return; await refreshCameras(); await startWithCurrentCamera(); }
+  async function start(){
+    if(running) return;
+
+    try{
+      await refreshCameras();
+      await startWithCurrentCamera();
+    }catch(e){
+      console.error(e);
+      if(role === "admin"){
+        logAdmin("No pude iniciar cámara. Revisa permisos, HTTPS y que la tablet tenga acceso a cámara.", "badTxt");
+      }else{
+        showOpToast("bad", "Cámara", "No pude abrir la cámara. Revisa permisos del navegador.");
+      }
+    }
+  }
+
   async function stop(){
     if(!running) return;
     running = false;
     $("toggle").textContent = "Iniciar cámara";
-    try{ await scanner.stop(); }catch(e){}
+    try{
+      if(scanner) await scanner.stop();
+    }catch(e){
+      console.error(e);
+    }
     if(role === "admin") logAdmin("Cámara detenida.", "muted");
   }
+
   async function switchCamera(){
     if(cameras.length < 2){
       if(role === "admin") logAdmin("Solo hay 1 cámara disponible.", "badTxt");
@@ -1284,8 +1790,21 @@
       return;
     }
     camIndex = (camIndex + 1) % cameras.length;
-    if(running){ await stop(); await start(); }
+    if(running){
+      await stop();
+      await start();
+    }
   }
+
+  // IMPORTANTE: listeners de cámara
+  toggleBtn.addEventListener("click", async ()=>{
+    if(running) await stop();
+    else await start();
+  });
+
+  switchBtn.addEventListener("click", async ()=>{
+    await switchCamera();
+  });
 
   filePick.addEventListener('change', async (e)=>{
     const file = e.target.files?.[0];
@@ -1305,9 +1824,7 @@
     }
   });
 
-  // =========================
-  // 🔫 Pistola escáner (modo auto sin Enter)
-  // =========================
+  // Pistola escáner
   let gunTimer = null;
   const GUN_IDLE_MS = 250;
   let lastGunValue = "";
@@ -1391,85 +1908,6 @@
     });
   }
 
-  function openCombo(showAll=false){
-    comboList.classList.add("open");
-    renderComboList(showAll ? "" : ($("nombre").value || ""));
-  }
-  function closeCombo(){ comboList.classList.remove("open"); }
-
-  function renderComboList(filterText){
-    const f = normalizeLine(filterText).toLowerCase();
-
-    const filtered = (clientsCache || [])
-      .filter(c => (c.nombre || "").trim().length > 0)
-      .filter(c => {
-        if(!f) return true;
-        const nm = normalizeLine(c.nombre||"").toLowerCase();
-        return nm.includes(f);
-      })
-      .slice(0, 250);
-
-    if(!filtered.length){
-      comboList.innerHTML = `<div class="comboEmpty">Sin resultados. Puedes crear este cliente con <b>Crear / Actualizar</b>.</div>`;
-      return;
-    }
-
-    comboList.innerHTML = filtered.map(c => `
-      <div class="comboItem" data-id="${escapeHtml(c.id)}">
-        <span class="dot"></span>
-        <div>
-          <div class="nm">${escapeHtml(c.nombre || "—")}</div>
-          ${role === "admin" ? `<div class="ph">${escapeHtml(c.telefono || "")}</div>` : ``}
-        </div>
-      </div>
-    `).join("");
-
-    comboList.querySelectorAll(".comboItem").forEach(item=>{
-      item.addEventListener("click", async ()=>{
-        const id = item.getAttribute("data-id");
-        const c = (clientsCache||[]).find(x => String(x.id) === String(id));
-        if(!c) return;
-
-        $("nombre").value = c.nombre || "";
-        currentClient = c;
-
-        if(role === "admin"){
-          $("tel").type = "text";
-          $("tel").value = c.telefono || "";
-        }else{
-          $("tel").type = "password";
-          $("tel").value = "";
-        }
-
-        renderStatus();
-        await renderClientQR();
-        setMsg("ok","Cliente cargado ✅");
-        closeCombo();
-      });
-    });
-  }
-
-  btnOpenCombo.addEventListener("click", ()=>{
-    if(comboList.classList.contains("open")) closeCombo();
-    else openCombo(true);
-  });
-
-  $("nombre").addEventListener("click", ()=> openCombo(true));
-  $("nombre").addEventListener("focus", ()=> openCombo(true));
-
-  $("nombre").addEventListener("input", ()=>{
-    openCombo(false);
-    if(role !== "admin"){
-      $("tel").type = "text";
-    }
-  });
-
-  document.addEventListener("click", (e)=>{
-    if(comboList.classList.contains("open") && !comboWrap.contains(e.target)){
-      closeCombo();
-    }
-  });
-
   async function loadNameDatalist(){
     const { data, error } = await sb
       .from(T_CLIENTES)
@@ -1477,11 +1915,14 @@
       .order("nombre", { ascending: true })
       .limit(5000);
 
-    if(error){ console.error(error); return; }
+    if(error){
+      console.error(error);
+      return;
+    }
 
     clientsCache = (data || []).filter(c => (c.nombre || "").trim().length > 0);
-
-    if(comboList.classList.contains("open")) renderComboList("");
+    renderRecentClients();
+    renderPicker();
   }
 
   function findClientByName(name){
@@ -1493,47 +1934,50 @@
     const nombre = normalizeLine($("nombre").value);
     if(!nombre) throw new Error("Nombre es obligatorio.");
 
-    const cached = findClientByName(nombre);
-    if(cached){
-      currentClient = cached;
+    const phoneTerm = cleanPhone(nombre);
 
-      if(role === "admin"){
-        $("tel").type = "text";
-        $("tel").value = cached.telefono || "";
-      }else{
-        $("tel").type = "password";
-        $("tel").value = "";
-      }
+    let found = null;
 
-      renderStatus();
-      await renderClientQR();
-      setMsg("ok","Cliente encontrado ✅");
-      closeCombo();
+    if(phoneTerm){
+      found = clientsCache.find(c => cleanPhone(c.telefono || "").includes(phoneTerm)) || null;
+    }
+
+    if(!found){
+      found = findClientByName(nombre);
+    }
+
+    if(found){
+      await selectClient(found, true);
       return;
     }
 
-    const { data, error } = await sb
+    let query = sb
       .from(T_CLIENTES)
-      .select("id,telefono,nombre,puntos,saldo_kg")
-      .ilike("nombre", nombre)
-      .maybeSingle();
+      .select("id,telefono,nombre,puntos,saldo_kg");
+
+    if(phoneTerm){
+      query = query.ilike("telefono", `%${phoneTerm}%`);
+    }else{
+      query = query.ilike("nombre", `%${nombre}%`);
+    }
+
+    const { data, error } = await query.limit(1).maybeSingle();
 
     if(error) throw error;
 
-    currentClient = data || null;
-
-    if(role === "admin"){
-      $("tel").type = "text";
-      $("tel").value = data?.telefono || "";
-    }else{
-      $("tel").type = data ? "password" : "text";
-      $("tel").value = "";
+    if(data){
+      await selectClient(data, true);
+      return;
     }
 
+    currentClient = null;
     renderStatus();
     await renderClientQR();
 
-    setMsg("ok", data ? "Cliente encontrado ✅" : "No existe: crea el cliente.");
+    $("tel").type = "text";
+    if(role !== "admin") $("tel").value = "";
+
+    setMsg("ok", "No existe: crea el cliente.");
   }
 
   async function crearOActualizarCliente(){
@@ -1553,18 +1997,15 @@
 
     if(res.error) throw res.error;
 
-    currentClient = res.data;
+    await loadNameDatalist();
+    await selectClient(res.data, true);
 
     if(role !== "admin"){
       $("tel").value = "";
       $("tel").type = "password";
     }
 
-    renderStatus();
-    await renderClientQR();
     setMsg("ok", "Cliente creado/actualizado ✅");
-    await loadNameDatalist();
-    closeCombo();
   }
 
   $("btnBuscar").addEventListener("click", async ()=>{
@@ -1585,6 +2026,17 @@
     setMsg("ok","Listo ✅");
   });
 
+  $("nombre").addEventListener("keydown", async (e)=>{
+    if(e.key === "Enter"){
+      e.preventDefault();
+      try{
+        await buscarClientePorNombreOTel();
+      }catch(err){
+        console.error(err);
+      }
+    }
+  });
+
   async function cargarClientePorQuery(){
     const u = new URL(window.location.href);
     const cid = u.searchParams.get("cid");
@@ -1599,21 +2051,8 @@
     if(error){ console.error(error); setMsg("bad", "Error cargando cid: " + error.message); return; }
     if(!data){ setMsg("bad", "Este cid no existe."); return; }
 
-    currentClient = data;
-    $("nombre").value = data.nombre || "";
-
-    if(role === "admin"){
-      $("tel").type = "text";
-      $("tel").value = data.telefono || "";
-    }else{
-      $("tel").type = "password";
-      $("tel").value = "";
-    }
-
-    renderStatus();
-    await renderClientQR();
+    await selectClient(data, true);
     setMsg("ok", "Cliente cargado desde QR ✅");
-    closeCombo();
   }
 
   const btnProcesarPegado = $("btnProcesarPegado");
@@ -1626,6 +2065,7 @@
       await handleDecoded(t);
     });
   }
+
   if(btnLimpiar){
     btnLimpiar.addEventListener("click", ()=>{
       if($("qrPayload")) $("qrPayload").value = "";
@@ -1657,6 +2097,9 @@
       $("tel").type = "text";
       $("tel").value = "";
     }
+
+    renderRecentClients();
+    renderPicker();
 
     if(scanGun){
       setTimeout(() => { scanGun.focus(); }, 200);
