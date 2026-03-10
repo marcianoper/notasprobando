@@ -1128,6 +1128,7 @@
     if(/^CAJA\s+CANADIAN\b/.test(t) || t.includes("CAJA CANADIAN")) return "MENUDO_CANADIAN";
     if(t.includes("NATIONAL")) return "CAJA_MENUDO_NATIONAL";
    if(t.includes("WASHINGTON")) return "CAJA_WASHINGTON";
+    if(t.includes("CABEZA")) return "CABEZA_RES";
     return t.replace(/\s+/g, "_");
   }
 
