@@ -1127,7 +1127,7 @@
     if(/^CAJA\s+AZUL\b/.test(t) || t.includes("CAJA AZUL")) return "CAJA_MENUDO_NATIONAL";
     if(/^CAJA\s+CANADIAN\b/.test(t) || t.includes("CAJA CANADIAN")) return "MENUDO_CANADIAN";
     if(t.includes("NATIONAL")) return "CAJA_MENUDO_NATIONAL";
-   if(t.includes("WASHINGTON")) return "CAJA_WASHINGTON";
+    if(t.includes("WASHINGTON")) return "CAJA_WASHINGTON";
     if(t.includes("CABEZA")) return "CABEZA_RES";
     if(t.includes("CANADIAN")) return "MENUDO_CANADIAN";
     return t.replace(/\s+/g, "_");
@@ -1180,6 +1180,7 @@
 
   function safeParseJson(text){
     const raw = String(text || "").trim();
+    if(!raw) throw new Error("QR vacío.");
 
     try{
       return JSON.parse(raw);
@@ -1201,31 +1202,46 @@
       .replace(/Ñ/g, ':')
       .replace(/ñ/g, ':');
 
-    const items = [];
-    const re = /cantidad\W*([0-9]+(?:\.[0-9]+)?)\W*producto\W*([A-ZÁÉÍÓÚÜÑ0-9\s._-]+)/gi;
+    try{
+      return JSON.parse(s);
+    }catch(_e){}
 
-    let m;
-    while((m = re.exec(s)) !== null){
-      const cantidad = String(m[1] || "").trim();
-
-      let producto = String(m[2] || "")
-        .replace(/[\[\]{}"*+,:]+/g, " ")
+    const itemsLong = [];
+    const reLong = /cantidad\W*"?([0-9]+(?:\.[0-9]+)?)"?\W*producto\W*"?(.*?)"?(?=\s*[\]}]|,|\s*$)/gi;
+    let mLong;
+    while((mLong = reLong.exec(s)) !== null){
+      const cantidad = String(mLong[1] || "").trim();
+      let producto = String(mLong[2] || "")
+        .replace(/[\[\]{}]+/g, " ")
         .replace(/\s+/g, " ")
         .trim();
 
+      producto = producto.replace(/^"+|"+$/g, "").trim();
       producto = producto.replace(/\bCANTIDAD\b.*$/i, "").trim();
 
       if(cantidad && producto){
-        items.push({
-          cantidad,
-          producto
-        });
+        itemsLong.push({ cantidad, producto });
       }
     }
+    if(itemsLong.length) return itemsLong;
 
-    if(items.length){
-      return items;
+    const itemsShort = [];
+    const reShort = /["']?c["']?\s*[:=]\s*["']?([0-9]+(?:\.[0-9]+)?)["']?\s*[,;]\s*["']?p["']?\s*[:=]\s*["']?([^"'}\],]+(?:\s[^"'}\],]+)*)["']?/gi;
+    let mShort;
+    while((mShort = reShort.exec(s)) !== null){
+      const c = String(mShort[1] || "").trim();
+      let p = String(mShort[2] || "")
+        .replace(/[\[\]{}]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      p = p.replace(/^"+|"+$/g, "").trim();
+
+      if(c && p){
+        itemsShort.push({ c, p });
+      }
     }
+    if(itemsShort.length) return itemsShort;
 
     let t = s
       .replace(/\*/g, '}')
@@ -1236,14 +1252,25 @@
     }catch(e){
       console.error("Texto original pistola:", raw);
       console.error("Texto saneado:", t);
-      throw new Error("No pude convertir el texto de la pistola a datos válidos.");
+      throw new Error("No pude convertir el texto escaneado a datos válidos.");
     }
   }
 
   function normalizePayload(raw, decodedText){
     const mapLine = (x) => {
-      const producto = String(x.producto || x.sku || "").trim();
-      const qty = Number(x.cantidad ?? x.kg ?? 0);
+      const producto = String(
+        x.producto ??
+        x.p ??
+        x.sku ??
+        ""
+      ).trim();
+
+      const qty = Number(
+        x.cantidad ??
+        x.c ??
+        x.kg ??
+        0
+      );
 
       if(isIgnorableItem(producto)) return null;
 
@@ -1252,22 +1279,41 @@
 
       if(!sku || !Number.isFinite(kgForInv) || kgForInv <= 0) return null;
 
-      return { producto: producto || sku, sku, kg: kgForInv, _kgTotal: kgForTotal };
+      return {
+        producto: producto || sku,
+        sku,
+        kg: kgForInv,
+        _kgTotal: kgForTotal
+      };
     };
 
     if(Array.isArray(raw)){
       const itemsUi = raw.map(mapLine).filter(Boolean);
       const itemsForRpc = itemsUi.map(({sku, kg}) => ({ sku, kg }));
-      return { qr_id: hashQr(decodedText), items: itemsForRpc, _itemsUi: itemsUi };
+      return {
+        qr_id: hashQr(decodedText),
+        items: itemsForRpc,
+        _itemsUi: itemsUi
+      };
     }
 
     if(raw && typeof raw === "object"){
       let items = raw.items;
       if(!Array.isArray(items) && Array.isArray(raw.productos)) items = raw.productos;
+      if(!Array.isArray(items) && Array.isArray(raw.data)) items = raw.data;
+
+      if(!Array.isArray(items) && (raw.c || raw.cantidad) && (raw.p || raw.producto)){
+        items = [raw];
+      }
 
       const itemsUi = (items || []).map(mapLine).filter(Boolean);
       const itemsForRpc = itemsUi.map(({sku, kg}) => ({ sku, kg }));
-      return { qr_id: String(raw.qr_id || hashQr(decodedText)), items: itemsForRpc, _itemsUi: itemsUi };
+
+      return {
+        qr_id: String(raw.qr_id || hashQr(decodedText)),
+        items: itemsForRpc,
+        _itemsUi: itemsUi
+      };
     }
 
     return null;
@@ -1324,7 +1370,7 @@
 
     if(s.includes("CAJA_MENUDO_NATIONAL")) return true;
     if(s.includes("MENUDO_CANADIAN")) return true;
-    if(s.includes("MENUDO_WASHINGTON")) return true;
+    if(s.includes("CAJA_WASHINGTON")) return true;
 
     const looksCaja = p.includes("CAJA");
     const isKnownBox = p.includes("AZUL") || p.includes("NATIONAL") || p.includes("CANADIAN") || p.includes("WASHINGTON");
@@ -1798,7 +1844,6 @@
     }
   }
 
-  // IMPORTANTE: listeners de cámara
   toggleBtn.addEventListener("click", async ()=>{
     if(running) await stop();
     else await start();
@@ -1826,7 +1871,6 @@
     }
   });
 
-  // Pistola escáner
   let gunTimer = null;
   const GUN_IDLE_MS = 250;
   let lastGunValue = "";
