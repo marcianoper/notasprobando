@@ -195,6 +195,79 @@
     .log{white-space:pre-wrap;font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:13px;padding:12px;background:rgba(248,250,252,.92);border:1px solid rgba(15,23,42,.10);border-radius:16px;margin-top:8px}
     .okTxt{color:#166534;font-weight:1000}.badTxt{color:#991b1b;font-weight:1000}.warnTxt{color:#92400e;font-weight:1000}.mutedTxt{color:var(--muted)}
     ul{margin:10px 0 0 18px}li{margin:6px 0}
+
+    .suggestBox{
+      display:none;
+      margin-top:8px;
+      border:1px solid rgba(15,23,42,.10);
+      border-radius:18px;
+      background:rgba(255,255,255,.96);
+      box-shadow:0 18px 45px rgba(2,6,23,.12);
+      overflow:hidden;
+      max-height:330px;
+      overflow-y:auto;
+    }
+    .suggestTop{
+      padding:10px 12px;
+      font-size:12px;
+      font-weight:1100;
+      color:var(--muted);
+      border-bottom:1px solid rgba(15,23,42,.08);
+      background:rgba(248,250,252,.92);
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:center;
+    }
+    .suggestList{
+      display:grid;
+      gap:8px;
+      padding:10px;
+    }
+    .suggestItem{
+      border:1px solid rgba(15,23,42,.08);
+      background:#fff;
+      border-radius:16px;
+      padding:12px;
+      cursor:pointer;
+      box-shadow:0 8px 18px rgba(2,6,23,.06);
+      transition:transform .08s ease, border-color .12s ease, box-shadow .12s ease;
+    }
+    .suggestItem:hover,
+    .suggestItem.active{
+      transform:translateY(-1px);
+      border-color:rgba(34,197,94,.35);
+      box-shadow:0 12px 24px rgba(2,6,23,.10);
+      background:linear-gradient(180deg, #fff, rgba(34,197,94,.04));
+    }
+    .suggestItem .nm{
+      font-size:16px;
+      font-weight:1200;
+      line-height:1.15;
+    }
+    .suggestItem .ph{
+      margin-top:5px;
+      font-size:12px;
+      color:var(--muted);
+      font-weight:800;
+    }
+    .suggestItem .meta{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:8px;
+    }
+    .suggestItem .meta span{
+      display:inline-flex;
+      padding:5px 9px;
+      border-radius:999px;
+      background:rgba(34,197,94,.08);
+      border:1px solid rgba(34,197,94,.15);
+      color:#166534;
+      font-size:11px;
+      font-weight:1100;
+    }
+
     #filePick{display:none}
     #reader{border-radius:18px;overflow:hidden;background:#fff;border:1px solid rgba(15,23,42,.10);min-height:120px}
     .helperRow{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
@@ -236,7 +309,15 @@
         <div>
           <label>Nombre</label>
           <input id="nombre" placeholder="Escribe nombre para nuevo cliente o búsqueda rápida..." autocomplete="off" />
-          <div class="muted">En tablet conviene tocar “Buscar cliente” para ver tarjetas grandes.</div>
+          <div class="muted">Escribe y abajo saldrán clientes similares automáticamente.</div>
+
+          <div class="suggestBox" id="suggestBox">
+            <div class="suggestTop">
+              <span id="suggestTitle">Clientes similares</span>
+              <span>Enter = elegir primero</span>
+            </div>
+            <div class="suggestList" id="suggestList"></div>
+          </div>
         </div>
 
         <div>
@@ -483,6 +564,11 @@
   const detailSub = $("detailSub");
 
   const telHint = $("telHint");
+  const suggestBox = $("suggestBox");
+  const suggestList = $("suggestList");
+  const suggestTitle = $("suggestTitle");
+  let suggestActiveIndex = -1;
+  let currentSuggestions = [];
 
   const pickerBg = $("pickerBg");
   const btnCerrarPicker = $("btnCerrarPicker");
@@ -873,6 +959,112 @@
   btnCerrarDetalle.addEventListener("click", closeDetalle);
   detailBg.addEventListener("click", (e)=>{ if(e.target === detailBg) closeDetalle(); });
 
+
+  function scoreClientForSearch(c, q){
+    const name = normalizeLine(c.nombre || "").toLowerCase();
+    const tel = cleanPhone(c.telefono || "");
+    const cleanQ = normalizeLine(q || "").toLowerCase();
+    const phoneQ = cleanPhone(q || "");
+
+    if(!cleanQ && !phoneQ) return -1;
+
+    if(phoneQ && tel.includes(phoneQ)) return 100;
+    if(name === cleanQ) return 95;
+    if(name.startsWith(cleanQ)) return 85;
+    if(name.includes(cleanQ)) return 70;
+
+    const words = cleanQ.split(" ").filter(Boolean);
+    if(words.length && words.every(w => name.includes(w))) return 60;
+
+    return -1;
+  }
+
+  function getSimilarClients(q, limit=8){
+    const scored = (clientsCache || [])
+      .map(c => ({ c, score: scoreClientForSearch(c, q) }))
+      .filter(x => x.score >= 0)
+      .sort((a,b) => {
+        if(b.score !== a.score) return b.score - a.score;
+        return String(a.c.nombre || "").localeCompare(String(b.c.nombre || ""));
+      })
+      .slice(0, limit)
+      .map(x => x.c);
+
+    return scored;
+  }
+
+  function hideSuggestions(){
+    if(suggestBox) suggestBox.style.display = "none";
+    suggestActiveIndex = -1;
+    currentSuggestions = [];
+  }
+
+  function renderSuggestions(){
+    if(!suggestBox || !suggestList) return;
+
+    const q = normalizeLine($("nombre")?.value || "");
+    if(q.length < 2){
+      hideSuggestions();
+      return;
+    }
+
+    currentSuggestions = getSimilarClients(q, 10);
+    suggestActiveIndex = currentSuggestions.length ? 0 : -1;
+
+    if(!currentSuggestions.length){
+      suggestBox.style.display = "block";
+      suggestTitle.textContent = "Sin coincidencias";
+      suggestList.innerHTML = `<div class="emptyState">No encontré clientes parecidos. Puedes crearlo con el botón Crear / Actualizar.</div>`;
+      return;
+    }
+
+    suggestBox.style.display = "block";
+    suggestTitle.textContent = `${currentSuggestions.length} cliente(s) similar(es)`;
+
+    suggestList.innerHTML = currentSuggestions.map((c, idx) => `
+      <div class="suggestItem ${idx === suggestActiveIndex ? "active" : ""}" data-id="${escapeHtml(c.id)}">
+        <div class="nm">${escapeHtml(c.nombre || "—")}</div>
+        <div class="ph">${escapeHtml(role === "admin" ? (c.telefono || "Sin teléfono") : maskPhone(c.telefono || ""))}</div>
+        <div class="meta">
+          <span>Puntos: ${Number(c.puntos || 0)}</span>
+          <span>Saldo: ${Number(c.saldo_kg || 0).toFixed(3)} kg</span>
+        </div>
+      </div>
+    `).join("");
+
+    suggestList.querySelectorAll(".suggestItem").forEach(el=>{
+      el.addEventListener("mousedown", async (e)=>{
+        e.preventDefault();
+        const id = el.getAttribute("data-id");
+        const c = (clientsCache || []).find(x => String(x.id) === String(id));
+        if(c){
+          await selectClient(c, true);
+          hideSuggestions();
+        }
+      });
+    });
+  }
+
+  async function chooseSuggestionByIndex(idx){
+    const c = currentSuggestions[idx];
+    if(!c) return false;
+    await selectClient(c, true);
+    hideSuggestions();
+    return true;
+  }
+
+  function moveSuggestion(delta){
+    if(!currentSuggestions.length || !suggestList) return;
+    suggestActiveIndex += delta;
+    if(suggestActiveIndex < 0) suggestActiveIndex = currentSuggestions.length - 1;
+    if(suggestActiveIndex >= currentSuggestions.length) suggestActiveIndex = 0;
+
+    suggestList.querySelectorAll(".suggestItem").forEach((el, idx)=>{
+      el.classList.toggle("active", idx === suggestActiveIndex);
+      if(idx === suggestActiveIndex) el.scrollIntoView({ block:"nearest" });
+    });
+  }
+
   function saveRecentClient(client){
     if(!client?.id) return;
     const arr = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]").filter(id => String(id) !== String(client.id));
@@ -954,6 +1146,7 @@
     saveRecentClient(c);
     renderStatus();
     setMsg("ok","Cliente cargado ✅");
+    hideSuggestions();
 
     if(focusGun){
       setTimeout(()=>{
@@ -1301,6 +1494,7 @@
 
     clientsCache = (data || []).filter(c => (c.nombre || "").trim().length > 0);
     renderPicker();
+    renderSuggestions();
   }
 
   function findClientByName(name){
@@ -1389,15 +1583,48 @@
     setMsg("ok","Listo ✅");
   });
 
+  $("nombre").addEventListener("input", ()=>{
+    renderSuggestions();
+  });
+
+  $("nombre").addEventListener("focus", ()=>{
+    renderSuggestions();
+  });
+
+  $("nombre").addEventListener("blur", ()=>{
+    setTimeout(hideSuggestions, 160);
+  });
+
   $("nombre").addEventListener("keydown", async (e)=>{
+    if(e.key === "ArrowDown"){
+      e.preventDefault();
+      moveSuggestion(1);
+      return;
+    }
+
+    if(e.key === "ArrowUp"){
+      e.preventDefault();
+      moveSuggestion(-1);
+      return;
+    }
+
+    if(e.key === "Escape"){
+      hideSuggestions();
+      return;
+    }
+
     if(e.key === "Enter"){
       e.preventDefault();
+
+      if(currentSuggestions.length){
+        const ok = await chooseSuggestionByIndex(suggestActiveIndex >= 0 ? suggestActiveIndex : 0);
+        if(ok) return;
+      }
+
       try{ await buscarClientePorNombreOTel(); }
       catch(err){ console.error(err); }
     }
   });
-
-  $("nombre").addEventListener("dblclick", openPicker);
 
   async function cargarClientePorQuery(){
     const u = new URL(window.location.href);
