@@ -6,7 +6,8 @@
   <title>VDC360° — Clientes</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <!-- versión fija: sin versión, una actualización de la librería puede romper la cámara sin aviso -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 
   <style>
     :root{
@@ -597,6 +598,7 @@
     out.innerHTML = cls ? `<span class="${cls}">${txt}</span>` : txt;
   }
 
+  let toastTimer = null;
   function showOpToast(type, title, details){
     opToast.style.display = "block";
     opToast.className = "toast " + (type === "ok" ? "ok" : "bad");
@@ -604,7 +606,9 @@
       <div class="t">${escapeHtml(title || "")}</div>
       <div class="d">${escapeHtml(details || "")}</div>
     `;
-    setTimeout(()=>{ opToast.style.display = "none"; }, 4500);
+    // antes un aviso viejo podía esconder el aviso nuevo antes de tiempo
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=>{ opToast.style.display = "none"; }, type === "ok" ? 4500 : 8000);
   }
 
   function setMsg(type, text){
@@ -643,6 +647,16 @@
   btnCambiarUsuario.addEventListener("click", ()=>{
     if(role !== "admin") return;
     openModal();
+  });
+
+  // Antes, una vez en modo Operador ya no había forma de volver a Admin (el botón se oculta).
+  // Ahora: toca 5 veces el título "VDC360° — Clientes" para abrir el cambio de usuario (pide PIN).
+  let titleTaps = 0, titleTapTimer = null;
+  document.querySelector(".brandTitle")?.addEventListener("click", ()=>{
+    titleTaps++;
+    clearTimeout(titleTapTimer);
+    titleTapTimer = setTimeout(()=>{ titleTaps = 0; }, 2000);
+    if(titleTaps >= 5){ titleTaps = 0; openModal(); }
   });
   btnCloseModal.addEventListener("click", closeModal);
 
@@ -692,12 +706,24 @@
       .toUpperCase()
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
+    // limpia basura que a veces trae el texto de la pistola (ej. "CAJA WASHINGTON},{")
+    t = t.replace(/[^A-Z0-9Ñ ]+/g, " ").replace(/\s+/g, " ").trim();
+
     if(/PATA[\s_-]*MORENA/.test(t)) return "PATA_MORENA";
+    if(/PATA[\s_-]*BLANCA/.test(t)) return "PATA_BLANCA";
     if(/^CAJA\s+AZUL\b/.test(t) || t.includes("CAJA AZUL")) return "CAJA_MENUDO_NATIONAL";
     if(/^CAJA\s+CANADIAN\b/.test(t) || t.includes("CAJA CANADIAN")) return "MENUDO_CANADIAN";
     if(t.includes("NATIONAL")) return "CAJA_MENUDO_NATIONAL";
     if(t.includes("WASHINGTON")) return "CAJA_WASHINGTON";
+    if(t.includes("EXCEL")) return "CAJA_EXCEL";
+    // Antes TODA cabeza se guardaba como CABEZA_RES (también la de rastro y la sin lengua)
+    if(t.includes("CABEZA") && t.includes("RASTRO")) return "CABEZA_RASTRO";
+    if(t.includes("CABEZA") && /SIN\s*LENGUA/.test(t)) return "CABEZA_SIN_LENGUA";
     if(t.includes("CABEZA")) return "CABEZA_RES";
+    if(t.includes("TRIPA") && t.includes("RASTRO")) return "TRIPA_RASTRO";
+    if(t.includes("TRIPA") && t.includes("GORDA")) return "TRIPA_GORDA";
+    // Panza Bolsa se descuenta de Panza (antes se ignoraba por la palabra "BOLSA")
+    if(t.includes("PANZA")) return "PANZA";
     if(t.includes("CANADIAN")) return "MENUDO_CANADIAN";
     return t.replace(/\s+/g, "_");
   }
@@ -706,19 +732,20 @@
     const name = String(productoOriginal || "").toUpperCase();
     const q = Number(qty);
 
+    // En "CAJA ... COMPLETA" la cantidad del ticket es NÚMERO DE CAJAS, no kilos.
+    // Antes solo se convertía cuando era 1 caja; con 2 o más se guardaban como 2, 3, 4… kilos.
     const isCajaCompleta =
       name.includes("CAJA") &&
       name.includes("COMPLETA") &&
-      Number.isFinite(q) &&
-      Math.abs(q - 1) < 1e-9;
+      Number.isFinite(q) && q > 0;
 
     let kgForInv = Number.isFinite(q) ? q : 0;
     let kgForTotal = kgForInv;
 
     if(isCajaCompleta){
-      if(name.includes("AZUL") || name.includes("CANADIAN") || name.includes("NATIONAL") || name.includes("WASHINGTON")){
-        kgForInv = BOX_FULL_KG;
-        kgForTotal = 0;
+      if(name.includes("AZUL") || name.includes("CANADIAN") || name.includes("NATIONAL") || name.includes("WASHINGTON") || name.includes("EXCEL")){
+        kgForInv = Math.round(q * BOX_FULL_KG * 100) / 100;
+        kgForTotal = 0;   // las cajas completas no suman al total de puntos (igual que antes con 1 caja)
       }
     }
     return { kgForInv, kgForTotal };
@@ -730,9 +757,11 @@
       .toUpperCase()
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
+    // Ojo: antes cualquier producto con la palabra BOLSA se ignoraba, y por eso "PANZA BOLSA" nunca se guardaba.
+    // Ahora solo se ignora la bolsa sola.
     return (
       /\bPELLEJO\b/.test(t) ||
-      /\bBOLSA(S)?\b/.test(t) ||
+      /^BOLSA(S)?$/.test(t) ||
       /\bSERVICIO\b/.test(t) ||
       /\bPROPINA\b/.test(t)
     );
@@ -747,6 +776,23 @@
     return "QR_" + (h >>> 0).toString(16);
   }
 
+  function hoyMX(){ return new Intl.DateTimeFormat("en-CA",{ timeZone:"America/Mexico_City" }).format(new Date()); }
+
+  // Huella del ticket. Antes era el texto tal cual, lo que causaba 2 problemas:
+  //  1) el mismo ticket leído con cámara y con pistola daba textos distintos -> se podía guardar 2 veces;
+  //  2) un ticket idéntico a uno de OTRO día (ej. "1 caja completa") quedaba bloqueado para siempre.
+  // Ahora: fecha de hoy + productos/cantidades ya leídos.
+  function ticketFingerprint(payload, n){
+    if(payload._qrId) return "QRID_" + payload._qrId + (n > 1 ? "_N" + n : "");
+    const canon = (payload._lines || []).map(l => {
+      const p = String(l.producto ?? l.p ?? l.sku ?? "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^A-Z0-9Ñ ]+/g," ").replace(/\s+/g," ").trim();
+      const c = Number(String(l.cantidad ?? l.c ?? l.kg ?? "").replace(",", "."));
+      return p + "=" + (Number.isFinite(c) ? c.toFixed(3) : "?");
+    }).join(";");
+    const base = hashQr(hoyMX() + "|" + canon).replace("QR_", "QR2_");
+    return n > 1 ? base + "_N" + n : base;
+  }
+
   function safeParseJson(text){
     const raw = String(text || "").trim();
     if(!raw) throw new Error("QR vacío.");
@@ -759,6 +805,12 @@
       const first = parts[0];
       const allSame = parts.every(x => x === first);
       if(allSame) s = first;
+    }
+
+    // Pistola con teclado en otro idioma: escribe ´¨[cantidad[Ñ[20.950[,...*+  en lugar de [{"cantidad":"20.950",...}]
+    if(/Ñ/.test(s) && !/:/.test(s)){
+      const fixed = s.replace(/[´¨\[Ñ*+]/g, ch => ({ "´":"[", "¨":"{", "[":'"', "Ñ":":", "*":"}", "+":"]" }[ch]));
+      try{ return JSON.parse(fixed); }catch(_e){}
     }
 
     s = s
@@ -814,24 +866,29 @@
   }
 
   function normalizePayload(raw, decodedText){
+    const skipped = [];   // líneas que no se pudieron leer (antes se perdían sin avisar)
     const mapLine = (x) => {
       const producto = String(x.producto ?? x.p ?? x.sku ?? "").trim();
-      const qty = Number(x.cantidad ?? x.c ?? x.kg ?? 0);
+      const qty = Number(String(x.cantidad ?? x.c ?? x.kg ?? 0).replace(",", "."));
 
       if(isIgnorableItem(producto)) return null;
 
       const sku = canonSku(producto);
       const { kgForInv, kgForTotal } = applyBoxRules(producto, qty);
 
-      if(!sku || !Number.isFinite(kgForInv) || kgForInv <= 0) return null;
+      if(!sku || !Number.isFinite(kgForInv) || kgForInv <= 0){
+        if(producto) skipped.push(producto);
+        return null;
+      }
 
       return { producto: producto || sku, sku, kg: kgForInv, _kgTotal: kgForTotal };
     };
+    const conSkipped = (res) => { if(res) res._skipped = skipped; return res; };
 
     if(Array.isArray(raw)){
       const itemsUi = raw.map(mapLine).filter(Boolean);
       const itemsForRpc = itemsUi.map(({sku, kg}) => ({ sku, kg }));
-      return { qr_id: hashQr(decodedText), items: itemsForRpc, _itemsUi: itemsUi };
+      return conSkipped({ items: itemsForRpc, _itemsUi: itemsUi, _lines: raw });
     }
 
     if(raw && typeof raw === "object"){
@@ -843,7 +900,7 @@
       const itemsUi = (items || []).map(mapLine).filter(Boolean);
       const itemsForRpc = itemsUi.map(({sku, kg}) => ({ sku, kg }));
 
-      return { qr_id: String(raw.qr_id || hashQr(decodedText)), items: itemsForRpc, _itemsUi: itemsUi };
+      return conSkipped({ items: itemsForRpc, _itemsUi: itemsUi, _lines: items || [], _qrId: raw.qr_id ? String(raw.qr_id) : "" });
     }
 
     return null;
@@ -1160,11 +1217,11 @@
 
   async function descontarInventarioConRPC(payload, fingerprint){
     const { data, error } = await sb.rpc('procesar_venta_qr', {
-      payload: { qr_id: payload.qr_id, items: payload.items },
+      payload: { qr_id: fingerprint, items: payload.items },
       p_fingerprint: fingerprint
     });
     if(error) return { ok:false, error: error.message };
-    if(data?.code === 'DUPLICATE') return { ok:false, duplicate:true, data };
+    if(data?.code === 'DUPLICATE') return { ok:true, duplicate:true, data };
     if(!data?.ok) return { ok:false, error: "NO OK:\n" + JSON.stringify(data, null, 2), data };
     return { ok:true, data };
   }
@@ -1175,8 +1232,10 @@
     const tipo = $("tipo").value;
     const kgAdmin = $("kgAuto");
     const kgOp = $("kgAutoOp");
-    const kg = toNum( (kgAdmin && role==="admin") ? kgAdmin.value : (kgOp ? kgOp.value : "") );
-    if(!Number.isFinite(kg) || kg <= 0) throw new Error("Total kg inválido.");
+    let kg = toNum( (kgAdmin && role==="admin") ? kgAdmin.value : (kgOp ? kgOp.value : "") );
+    // Ticket solo de cajas completas: el total para puntos es 0 (las cajas no suman puntos).
+    // Antes esto marcaba "Total kg inválido" y la venta NO se guardaba aunque el inventario ya se había descontado.
+    if(!Number.isFinite(kg) || kg < 0) throw new Error("Total kg inválido.");
 
     const items = (ticketItemsInv || [])
       .map(it => ({ sku: String(it.sku||"").trim(), kg: Number(it.kg)||0 }))
@@ -1213,22 +1272,64 @@
     return { venta_id: data.venta_id, puntosGanados: Number(data.puntos_ganados||0), itemsCount: items.length };
   }
 
-  async function handleDecoded(decodedText){
-    if(busy) return;
+  // Aplica un ticket con una huella: descuenta inventario y guarda la venta.
+  // Si el inventario ya estaba aplicado pero la venta no se guardó (se cortó el internet a medio camino),
+  // ahora sí termina de guardar la venta. Antes se quedaba en "Ya procesado" y la venta se perdía.
+  async function aplicarTicket(decodedText, payload, fingerprint){
+    const invRes = await descontarInventarioConRPC(payload, fingerprint);
+    if(!invRes.ok) throw new Error("ERROR INVENTARIO:\n" + (invRes.error || "—"));
+    return await guardarVentaClienteDesdeQR(decodedText, fingerprint);
+  }
+
+  // ¿Este ticket ya se escaneó HOY con la página anterior (huella vieja)?
+  async function yaEscaneadoConHuellaVieja(decodedText){
+    try{
+      const viejo = hashQr(decodedText);
+      const desde = new Date(hoyMX() + "T00:00:00-06:00").toISOString();
+      const { data } = await sb.from("qr_scans").select("fingerprint").eq("fingerprint", viejo).gte("created_at", desde).limit(1);
+      return !!(data && data.length);
+    }catch(_e){ return false; }
+  }
+
+  const sleep = (ms)=> new Promise(r=>setTimeout(r, ms));
+  const vistosRecientes = new Map();   // texto -> última vez que se vio
+  const IGNORAR_REPETIDO_MS = 8000;
+
+  async function handleDecoded(decodedText, opts = {}){
+    const texto = String(decodedText || "").trim();
+    if(!texto) return;
+
+    // La cámara lee el mismo QR muchas veces por segundo mientras está a la vista: se ignora en silencio.
+    const ahora = Date.now();
+    const ultimo = vistosRecientes.get(texto) || 0;
+    vistosRecientes.set(texto, ahora);
+    if(!opts.manual && ahora - ultimo < IGNORAR_REPETIDO_MS){
+      if(opts.esperar) showOpToast("ok", "Ya leído", "Este ticket se acaba de escanear.");
+      return;
+    }
+
+    if(busy){
+      // Antes, un escaneo de pistola que llegaba mientras se guardaba otro se perdía sin aviso.
+      if(!opts.esperar) return;
+      const limite = Date.now() + 15000;
+      while(busy && Date.now() < limite) await sleep(150);
+      if(busy){ showOpToast("bad", "Espera", "Se está guardando otro ticket. Vuelve a escanear."); return; }
+    }
     busy = true;
 
     try{
       if(!currentClient){
         if(role === "admin") logAdmin("Selecciona un cliente primero (o abre con ?cid=).", "warnTxt");
         else showOpToast("bad", "Falta cliente", "Selecciona cliente primero.");
+        vistosRecientes.delete(texto);
         return;
       }
 
       const payloadBox = $("qrPayload");
-      if(payloadBox) payloadBox.value = decodedText;
+      if(payloadBox) payloadBox.value = texto;
 
-      const raw = safeParseJson(decodedText);
-      const payload = normalizePayload(raw, decodedText);
+      const raw = safeParseJson(texto);
+      const payload = normalizePayload(raw, texto);
 
       if(!payload?.items?.length){
         if(role === "admin") logAdmin("QR inválido o solo traía conceptos ignorados.", "badTxt");
@@ -1236,44 +1337,53 @@
         return;
       }
 
-      const fingerprint = hashQr(decodedText);
+      let fingerprint = ticketFingerprint(payload, 1);
 
       updateTotalsUI(payload, fingerprint);
       ticketItemsUi = payload._itemsUi || [];
       ticketItemsInv = payload.items || [];
       $("btnVerDetalle").disabled = ticketItemsUi.length === 0;
 
-      if(role === "admin") logAdmin("1) Descontando inventario…", "muted");
+      if(role === "admin") logAdmin("Descontando inventario y guardando venta…", "muted");
       else showOpToast("ok", "Procesando…", "Aplicando inventario y guardando compra.");
 
-      const invRes = await descontarInventarioConRPC(payload, fingerprint);
+      let saveRes = (await yaEscaneadoConHuellaVieja(texto))
+        ? { duplicate:true }
+        : await aplicarTicket(texto, payload, fingerprint);
 
-      if(invRes.duplicate){
-        if(role === "admin") logAdmin("Ticket ya procesado (DUPLICATE). ✅", "okTxt");
-        else showOpToast("ok", "Ya procesado", "Este ticket ya estaba aplicado ✅");
-        return;
+      if(saveRes.duplicate){
+        const otro = window.confirm(
+          "Este ticket YA se registró hoy.\n\n" +
+          "• Si lo volviste a escanear por error: presiona CANCELAR (no se guarda nada).\n" +
+          "• Si es OTRO ticket con exactamente los mismos productos y kilos: presiona ACEPTAR."
+        );
+        if(!otro){
+          if(role === "admin") logAdmin("Ticket ya procesado (DUPLICATE). No se guardó otra vez. ✅", "okTxt");
+          else showOpToast("ok", "Ya procesado", "Este ticket ya estaba aplicado ✅");
+          return;
+        }
+        for(let n = 2; n <= 20 && saveRes.duplicate; n++){
+          fingerprint = ticketFingerprint(payload, n);
+          saveRes = await aplicarTicket(texto, payload, fingerprint);
+        }
+        if(saveRes.duplicate) throw new Error("No se pudo registrar como ticket nuevo.");
       }
-      if(!invRes.ok){
-        if(role === "admin") logAdmin("ERROR INVENTARIO:\n" + (invRes.error || "—"), "badTxt");
-        else showOpToast("bad", "Error", "No se pudo descontar inventario.");
-        return;
-      }
 
-      if(role === "admin") logAdmin("2) Guardando venta del cliente…", "muted");
-
-      const saveRes = await guardarVentaClienteDesdeQR(decodedText, fingerprint);
+      const avisoSkipped = (payload._skipped || []).length
+        ? `\n⚠️ No se pudieron leer: ${payload._skipped.join(", ")}`
+        : "";
 
       if(role === "admin"){
         logAdmin(
           "✅ LISTO\n" +
           `Venta guardada ✅ (ID: ${saveRes.venta_id})\n` +
           `Items: ${saveRes.itemsCount}\n` +
-          `Puntos ganados: ${saveRes.puntosGanados}`,
-          "okTxt"
+          `Puntos ganados: ${saveRes.puntosGanados}` + avisoSkipped,
+          avisoSkipped ? "warnTxt" : "okTxt"
         );
       }else{
         const kg = $("kgAutoOp")?.value || "";
-        showOpToast("ok", "✅ OK — Venta aplicada", `Cliente: ${currentClient?.nombre || "—"}\nTotal: ${kg} kg`);
+        showOpToast(avisoSkipped ? "bad" : "ok", "✅ OK — Venta aplicada", `Cliente: ${currentClient?.nombre || "—"}\nTotal: ${kg} kg` + avisoSkipped);
       }
 
       setTimeout(()=>{
@@ -1285,8 +1395,9 @@
 
     }catch(e){
       console.error(e);
+      vistosRecientes.delete(texto);   // que se pueda reintentar enseguida
       if(role === "admin") logAdmin("ERROR:\n" + (e?.message || String(e)), "badTxt");
-      else showOpToast("bad", "Error", "No se pudo procesar el ticket.");
+      else showOpToast("bad", "Error — NO se guardó", "No se pudo procesar el ticket. Revisa el internet y vuelve a escanear.");
     }finally{
       setTimeout(()=> busy = false, BUSY_COOLDOWN_MS);
     }
@@ -1399,7 +1510,7 @@
       if(role === "admin") logAdmin("Leyendo foto…", "muted");
       else showOpToast("ok", "Leyendo foto…", "Procesando QR.");
       const decodedText = await scanner.scanFile(file, true);
-      await handleDecoded(decodedText);
+      await handleDecoded(decodedText, { manual:true, esperar:true });
     }catch(err){
       console.error(err);
       if(role === "admin") logAdmin("No pude leer la foto. QR grande, sin reflejo, más cerca.", "badTxt");
@@ -1410,7 +1521,11 @@
   });
 
   let gunTimer = null;
-  const GUN_IDLE_MS = 250;
+  const GUN_IDLE_MS = 400;          // espera cuando el texto ya se ve completo
+  const GUN_IDLE_INCOMPLETO_MS = 1500; // espera más si el texto parece cortado (QR largo que la pistola manda lento)
+
+  // ¿El texto de la pistola parece un ticket completo? (termina en ] o }, o en + / * si el teclado está cambiado)
+  function pareceCompleto(t){ return /[\]}+*]\s*$/.test(String(t||"").trim()); }
   let lastGunValue = "";
 
   function resetGunBuffer(){
@@ -1434,7 +1549,8 @@
     const qrBox = $("qrPayload");
     if(qrBox) qrBox.value = t;
 
-    await handleDecoded(t);
+    if(scanGun) scanGun.value = "";   // limpiar antes, para que el siguiente escaneo no se pegue a este
+    await handleDecoded(t, { esperar:true });
 
     if(scanGun){
       scanGun.value = "";
@@ -1446,12 +1562,15 @@
     resetGunBuffer();
   }
 
+  // Antes procesaba a los 250 ms sin escribir: si la pistola hacía una pausa a la mitad de un QR largo,
+  // se guardaba un ticket incompleto y luego el resto como otro ticket.
   function scheduleGunProcess(){
     if(gunTimer) clearTimeout(gunTimer);
+    const val0 = String(scanGun?.value || "");
     gunTimer = setTimeout(async () => {
       const val = String(scanGun?.value || "").trim();
       if(val) await processGunText(val);
-    }, GUN_IDLE_MS);
+    }, pareceCompleto(val0) ? GUN_IDLE_MS : GUN_IDLE_INCOMPLETO_MS);
   }
 
   if(btnFocusGun){
@@ -1469,15 +1588,12 @@
     scanGun.addEventListener("keydown", async (e)=>{
       if(e.key === "Enter" || e.key === "Tab"){
         e.preventDefault();
+        if(gunTimer){ clearTimeout(gunTimer); gunTimer = null; }
         const val = String(scanGun.value || "").trim();
         if(val) await processGunText(val);
       }
     });
     scanGun.addEventListener("input", ()=>{ scheduleGunProcess(); });
-    scanGun.addEventListener("change", async ()=>{
-      const val = String(scanGun.value || "").trim();
-      if(val) await processGunText(val);
-    });
   }
 
   async function loadNameDatalist(){
@@ -1544,6 +1660,13 @@
 
     if(!nombre) throw new Error("Nombre es obligatorio.");
     if(tel.length !== 10) throw new Error("Teléfono inválido (debe ser de 10 dígitos).");
+
+    // Antes: si el teléfono ya era de OTRO cliente, se le cambiaba el nombre sin avisar.
+    const dueno = (clientsCache || []).find(c => cleanPhone(c.telefono || "") === tel);
+    if(dueno && normalizeLine(dueno.nombre || "").toLowerCase() !== nombre.toLowerCase()){
+      const ok = window.confirm(`Ese teléfono ya es de "${dueno.nombre}".\n\n¿Cambiarle el nombre a "${nombre}"?`);
+      if(!ok) throw new Error("No se guardó: ese teléfono ya pertenece a otro cliente.");
+    }
 
     const payload = { nombre, telefono: tel };
 
@@ -1651,7 +1774,7 @@
     btnProcesarPegado.addEventListener("click", async ()=>{
       const t = $("qrPayload")?.value || "";
       if(!t.trim()) return showOpToast("bad","Vacío","Pega el JSON del QR primero.");
-      await handleDecoded(t);
+      await handleDecoded(t, { manual:true, esperar:true });
     });
   }
 
