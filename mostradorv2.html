@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>VDC360° — Tickets del día</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f5f7fb; --paper:#fff; --ink:#0b1220; --muted:#64748b; --line:rgba(15,23,42,.10);
+    --brand:#16a34a; --brand2:#22c55e; --bad:#ef4444; --badBg:rgba(239,68,68,.07);
+    --warn:#f59e0b; --info:#0ea5e9; --shadow:0 14px 40px rgba(2,6,23,.08); --r:18px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--ink);background:var(--bg)}
+  header{position:sticky;top:0;z-index:10;background:linear-gradient(90deg,#16a34a,#22c55e);color:#fff;box-shadow:0 6px 20px rgba(22,163,74,.25)}
+  .head{max-width:1200px;margin:0 auto;padding:12px 16px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  .head b{font-size:18px;font-weight:900}
+  .head small{display:block;opacity:.85;font-weight:700;font-size:12px}
+  .live{font-size:12px;font-weight:800;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);padding:6px 10px;border-radius:999px}
+  .wrap{max-width:1200px;margin:0 auto;padding:16px;display:grid;gap:14px}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:14px}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .controls input,.controls select,.controls button{font-size:16px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#f8fafc;color:var(--ink)}
+  .controls button{cursor:pointer;font-weight:800}
+  .controls .main{background:linear-gradient(180deg,var(--brand2),var(--brand));color:#052e16;border:0}
+  #buscar{flex:1;min-width:200px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:#f8fafc;border:1px solid var(--line);border-radius:14px;padding:12px}
+  .stat span{display:block;font-size:12px;color:var(--muted);font-weight:800}
+  .stat b{display:block;font-size:24px;margin-top:4px;font-variant-numeric:tabular-nums}
+  .stat.bad b{color:var(--bad)}
+  h3{margin:0 0 10px;font-size:16px}
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:10px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;background:#f8fafc;position:sticky;top:0}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .hora{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .cli{font-weight:800}
+  .tipo{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:12px;padding:4px 8px;border-radius:999px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.18);white-space:nowrap}
+  .chip.morena{background:rgba(120,72,30,.10);border-color:rgba(120,72,30,.25)}
+  .chip.blanca{background:rgba(14,165,233,.08);border-color:rgba(14,165,233,.25)}
+  tr.danada td{background:var(--badBg)}
+  .tag{display:inline-block;margin-top:4px;font-size:11px;font-weight:800;color:#991b1b;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);padding:2px 7px;border-radius:999px}
+  .tag.rep{color:#92400e;background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.35)}
+  tr.dup td{background:rgba(245,158,11,.07)}
+  .empty{padding:24px;text-align:center;color:var(--muted)}
+  .tablewrap{max-height:70vh;overflow:auto;border-radius:12px;border:1px solid var(--line)}
+  .err{color:#991b1b;font-weight:800}
+  .legend{font-size:12px;color:var(--muted);margin-top:8px}
+  /* Celular: la tabla se vuelve tarjetas */
+  @media(max-width:640px){
+    .tablewrap{max-height:none}
+    #tabla thead{display:none}
+    #tabla tr{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;padding:10px;border-bottom:1px solid var(--line)}
+    #tabla td{border:0;padding:0}
+    #tabla td.prods{grid-column:1/-1}
+  }
+  @media print{
+    header,.controls,.noprint{display:none!important}
+    body{background:#fff}
+    .card{box-shadow:none;border:0;padding:0}
+    .tablewrap{max-height:none;overflow:visible;border:0}
+    @page{size:landscape;margin:10mm}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="head">
+    <div><b>VDC360° — Tickets del día</b><small>Todo lo que se escaneó, con hora, cliente y productos</small></div>
+    <span class="live" id="live">—</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="card">
+    <div class="controls">
+      <button id="prev" title="Día anterior">◀</button>
+      <input type="date" id="fecha"/>
+      <button id="next" title="Día siguiente">▶</button>
+      <button id="hoy">Hoy</button>
+      <select id="tipo">
+        <option value="mostrador">Mostrador</option>
+        <option value="credito">Crédito</option>
+        <option value="">Todos</option>
+      </select>
+      <input id="buscar" placeholder="Buscar cliente o producto…" autocomplete="off"/>
+      <button class="main" id="recargar">↻ Recargar</button>
+      <button id="imprimir">🖨️ Imprimir</button>
+    </div>
+  </section>
+
+  <section class="stats">
+    <div class="stat"><span>Tickets</span><b id="sTickets">0</b></div>
+    <div class="stat"><span>Total kg</span><b id="sKg">0.00</b></div>
+    <div class="stat"><span>Clientes distintos</span><b id="sClientes">0</b></div>
+    <div class="stat bad"><span>Posibles duplicados</span><b id="sMal">0</b></div>
+  </section>
+
+  <section class="card">
+    <h3 id="tituloTabla">Tickets</h3>
+    <div class="tablewrap">
+      <table id="tabla">
+        <thead><tr><th>Hora</th><th>Cliente</th><th>Productos</th><th class="num">Total kg</th></tr></thead>
+        <tbody id="tbody"><tr><td colspan="4" class="empty">Cargando…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="legend noprint">
+      <span class="tag">Lectura dañada</span> el QR se leyó cortado o con basura; casi seguro ya existe la lectura buena.
+      &nbsp; <span class="tag rep">Se repite</span> mismo producto y peso exacto que otro ticket de minutos antes.
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Total por producto (para cuadrar con lo enviado)</h3>
+    <div class="tablewrap" style="max-height:none">
+      <table>
+        <thead><tr><th>Producto</th><th class="num">Tickets</th><th class="num">Kg vendidos</th></tr></thead>
+        <tbody id="tbodyProd"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+  const SUPABASE_URL = "https://eqynjddcosvdqjzztznn.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxeW5qZGRjb3N2ZHFqenp0em5uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYxMzYwMzIsImV4cCI6MjA3MTcxMjAzMn0.Q51wsGelUvxRfqsMYRY5JduCGyZ7s6AzOhqsRf3kOhk";
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const $ = id => document.getElementById(id);
+  const AUTO_MS = 30000;   // hoy se actualiza solo cada 30 segundos
+  let datos = [];
+  let autoTimer = null;
+
+  function hoyMX(){ return new Intl.DateTimeFormat("en-CA",{ timeZone:"America/Mexico_City" }).format(new Date()); }
+  function moverDia(f, d){ const x = new Date(f + "T12:00:00"); x.setDate(x.getDate() + d); return x.toISOString().slice(0,10); }
+  function esc(s){ return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[c])); }
+  // PATA_MORENA -> Pata morena
+  function nombreProd(sku){ const t = String(sku || "").replace(/_/g, " ").toLowerCase(); return t.charAt(0).toUpperCase() + t.slice(1); }
+  const kgFmt = n => Number(n || 0).toLocaleString("es-MX", { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const kgTicket = t => (t.items || []).reduce((s, i) => s + (Number(i.kg) || 0), 0);
+
+  // Marca tickets que repiten producto + peso exacto de otro ticket en los 5 minutos anteriores
+  function marcarRepetidos(lista){
+    for(let i = 0; i < lista.length; i++){
+      const a = lista[i]; a._repite = false;
+      const ta = new Date(a.creado).getTime();
+      const llaves = new Set((a.items || []).map(x => x.p + "=" + Number(x.kg).toFixed(3)));
+      for(let j = i - 1; j >= 0; j--){
+        const b = lista[j];
+        if(ta - new Date(b.creado).getTime() > 5 * 60 * 1000) break;
+        if((b.items || []).some(x => llaves.has(x.p + "=" + Number(x.kg).toFixed(3)))){ a._repite = true; break; }
+      }
+    }
+  }
+
+  async function cargar(){
+    const fecha = $("fecha").value;
+    $("live").textContent = "Cargando…";
+    const { data, error } = await sb.rpc("tickets_escaneados_dia", { p_fecha: fecha });
+    if(error){
+      $("tbody").innerHTML = `<tr><td colspan="4" class="empty err">No se pudo cargar: ${esc(error.message)}</td></tr>`;
+      $("live").textContent = "Error";
+      return;
+    }
+    datos = data || [];
+    marcarRepetidos(datos);
+    pintar();
+    const hora = new Date().toLocaleTimeString("es-MX", { timeZone:"America/Mexico_City", hour:"2-digit", minute:"2-digit" });
+    $("live").textContent = (fecha === hoyMX() ? "En vivo · " : "") + "actualizado " + hora;
+  }
+
+  function pintar(){
+    const tipo = $("tipo").value;
+    const q = $("buscar").value.trim().toLowerCase();
+    const lista = datos.filter(t => {
+      if(tipo && t.tipo !== tipo) return false;
+      if(!q) return true;
+      return t.cliente.toLowerCase().includes(q) || (t.items || []).some(i => nombreProd(i.p).toLowerCase().includes(q));
+    });
+
+    // Resumen
+    const totalKg = lista.reduce((s, t) => s + kgTicket(t), 0);
+    $("sTickets").textContent = lista.length;
+    $("sKg").textContent = kgFmt(totalKg);
+    $("sClientes").textContent = new Set(lista.map(t => t.cliente)).size;
+    $("sMal").textContent = lista.filter(t => t.lectura_danada || t._repite).length;
+    $("tituloTabla").textContent = `Tickets — ${lista.length}`;
+
+    // Tabla de tickets (el más reciente arriba)
+    if(!lista.length){
+      $("tbody").innerHTML = `<tr><td colspan="4" class="empty">No hay tickets escaneados ${q ? "con esa búsqueda" : "este día"}.</td></tr>`;
+    }else{
+      $("tbody").innerHTML = [...lista].reverse().map(t => {
+        const chips = (t.items || []).map(i => {
+          const cls = i.p === "PATA_MORENA" ? "morena" : i.p === "PATA_BLANCA" ? "blanca" : "";
+          return `<span class="chip ${cls}">${esc(nombreProd(i.p))} <b>${kgFmt(i.kg)}</b></span>`;
+        }).join("");
+        const tags = (t.lectura_danada ? `<span class="tag">Lectura dañada</span> ` : "") + (t._repite && !t.lectura_danada ? `<span class="tag rep">Se repite</span>` : "");
+        const cls = t.lectura_danada ? "danada" : (t._repite ? "dup" : "");
+        return `<tr class="${cls}">
+          <td class="hora">${esc(t.hora)}</td>
+          <td><div class="cli">${esc(t.cliente)}</div><div class="tipo">${esc(t.tipo)}</div>${tags}</td>
+          <td class="prods"><div class="chips">${chips || '<span class="tipo">sin productos</span>'}</div></td>
+          <td class="num"><b>${kgFmt(kgTicket(t))}</b></td>
+        </tr>`;
+      }).join("");
+    }
+
+    // Total por producto
+    const porProd = new Map();
+    for(const t of lista){
+      const vistos = new Set();
+      for(const i of (t.items || [])){
+        const p = porProd.get(i.p) || { kg:0, tickets:0 };
+        p.kg += Number(i.kg) || 0;
+        if(!vistos.has(i.p)){ p.tickets++; vistos.add(i.p); }
+        porProd.set(i.p, p);
+      }
+    }
+    const filas = [...porProd.entries()].sort((a, b) => b[1].kg - a[1].kg);
+    $("tbodyProd").innerHTML = filas.length
+      ? filas.map(([p, v]) => `<tr><td>${esc(nombreProd(p))}</td><td class="num">${v.tickets}</td><td class="num"><b>${kgFmt(v.kg)}</b></td></tr>`).join("")
+        + `<tr><td><b>TOTAL</b></td><td></td><td class="num"><b>${kgFmt(totalKg)}</b></td></tr>`
+      : `<tr><td colspan="3" class="empty">—</td></tr>`;
+  }
+
+  function programarAuto(){
+    clearInterval(autoTimer);
+    if($("fecha").value === hoyMX()) autoTimer = setInterval(cargar, AUTO_MS);
+  }
+  function cambiarFecha(f){ $("fecha").value = f; cargar(); programarAuto(); }
+
+  $("fecha").addEventListener("change", () => { cargar(); programarAuto(); });
+  $("prev").addEventListener("click", () => cambiarFecha(moverDia($("fecha").value, -1)));
+  $("next").addEventListener("click", () => cambiarFecha(moverDia($("fecha").value, 1)));
+  $("hoy").addEventListener("click", () => cambiarFecha(hoyMX()));
+  $("tipo").addEventListener("change", pintar);
+  $("buscar").addEventListener("input", pintar);
+  $("recargar").addEventListener("click", cargar);
+  $("imprimir").addEventListener("click", () => window.print());
+
+  // Se puede abrir directo en un día: tickets_del_dia.html?fecha=2026-10-17
+  const fUrl = new URL(location.href).searchParams.get("fecha");
+  cambiarFecha(/^\d{4}-\d{2}-\d{2}$/.test(fUrl || "") ? fUrl : hoyMX());
+</script>
+</body>
+</html>
