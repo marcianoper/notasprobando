@@ -1295,6 +1295,62 @@
   const vistosRecientes = new Map();   // texto -> última vez que se vio
   const IGNORAR_REPETIDO_MS = 8000;
 
+  // ===== Protección contra lecturas a medias =====
+  // Antes, si la cámara o la pistola leía el QR cortado o con basura (ej. "10.8{50"),
+  // el sistema rescataba los productos que alcanzaba a leer y los guardaba como OTRO ticket.
+  // Luego llegaba la lectura buena y se guardaba otra vez -> la pata morena salía vendida 2 o 3 veces.
+  // Ahora una lectura incompleta NO se guarda: se pide volver a escanear.
+  function revisarLectura(texto, raw){
+    const t = String(texto || "").trim();
+
+    // 1) Debe empezar y terminar como ticket completo (también con teclado cambiado: ´¨ ... *+)
+    if(!/^[\[{´¨]/.test(t) || !/[\]}+*]$/.test(t)) return "El QR se leyó cortado.";
+
+    // 2) Cuántas líneas trae el ticket
+    let lineas = [], objetosEsperados = 0;
+    if(Array.isArray(raw)){ lineas = raw; objetosEsperados = raw.length; }
+    else if(raw && typeof raw === "object"){
+      const arr = Array.isArray(raw.items) ? raw.items : Array.isArray(raw.productos) ? raw.productos : Array.isArray(raw.data) ? raw.data : null;
+      if(arr){ lineas = arr; objetosEsperados = arr.length + 1; }   // +1 por la llave de afuera
+      else { lineas = [raw]; objetosEsperados = 1; }
+    }
+    if(!lineas.length) return "No se encontraron productos.";
+
+    // 3) Cada producto del texto debe haberse leído (si hay basura en medio, se pierden líneas)
+    const objetosEnTexto = (t.match(/[{¨]/g) || []).length;
+    if(objetosEnTexto !== objetosEsperados) return "El QR traía caracteres dañados.";
+
+    // 4) Cada cantidad debe ser un número limpio
+    for(const l of lineas){
+      const c = String(l?.cantidad ?? l?.c ?? l?.kg ?? "").trim().replace(",", ".");
+      if(!/^\d+(\.\d+)?$/.test(c)) return "Una cantidad venía dañada.";
+    }
+    return "";
+  }
+
+  // ===== Aviso si un ticket se parece a uno guardado hace poco =====
+  // Si comparte un producto con el MISMO peso exacto que un ticket guardado en los últimos 3 minutos,
+  // casi seguro es el mismo ticket leído otra vez.
+  const guardadosRecientes = [];   // { t, lineas:Set("SKU=kg") }
+  const VENTANA_PARECIDO_MS = 3 * 60 * 1000;
+
+  function lineasDe(payload){
+    return new Set((payload.items || []).map(it => it.sku + "=" + Number(it.kg).toFixed(3)));
+  }
+  function pareceRepetido(payload){
+    const ahora = Date.now();
+    while(guardadosRecientes.length && ahora - guardadosRecientes[0].t > VENTANA_PARECIDO_MS) guardadosRecientes.shift();
+    const nuevas = lineasDe(payload);
+    for(const g of guardadosRecientes){
+      const iguales = [...nuevas].filter(x => g.lineas.has(x));
+      if(iguales.length) return iguales;
+    }
+    return null;
+  }
+  function recordarGuardado(payload){
+    guardadosRecientes.push({ t: Date.now(), lineas: lineasDe(payload) });
+  }
+
   async function handleDecoded(decodedText, opts = {}){
     const texto = String(decodedText || "").trim();
     if(!texto) return;
@@ -1329,12 +1385,36 @@
       if(payloadBox) payloadBox.value = texto;
 
       const raw = safeParseJson(texto);
+
+      const problema = revisarLectura(texto, raw);
+      if(problema){
+        vistosRecientes.delete(texto);
+        if(role === "admin") logAdmin("❌ NO SE GUARDÓ — lectura incompleta.\n" + problema + "\nVuelve a escanear el ticket.\n\nTexto leído:\n" + texto, "badTxt");
+        else showOpToast("bad", "Lectura incompleta — NO se guardó", problema + "\nVuelve a escanear el ticket.");
+        return;
+      }
+
       const payload = normalizePayload(raw, texto);
 
       if(!payload?.items?.length){
         if(role === "admin") logAdmin("QR inválido o solo traía conceptos ignorados.", "badTxt");
         else showOpToast("bad", "QR inválido", "No pude leer productos.");
         return;
+      }
+
+      const parecido = pareceRepetido(payload);
+      if(parecido){
+        const seguir = window.confirm(
+          "Este ticket se parece a uno que se acaba de guardar (mismo producto y mismo peso exacto):\n" +
+          parecido.map(x => "• " + x.replace("=", " ") + " kg").join("\n") + "\n\n" +
+          "• Si es el MISMO ticket leído otra vez: presiona CANCELAR (no se guarda).\n" +
+          "• Si de verdad es OTRO ticket: presiona ACEPTAR."
+        );
+        if(!seguir){
+          if(role === "admin") logAdmin("No se guardó: parecía el mismo ticket leído otra vez. ✅", "okTxt");
+          else showOpToast("ok", "No se guardó", "Era el mismo ticket ✅");
+          return;
+        }
       }
 
       let fingerprint = ticketFingerprint(payload, 1);
@@ -1368,6 +1448,8 @@
         }
         if(saveRes.duplicate) throw new Error("No se pudo registrar como ticket nuevo.");
       }
+
+      recordarGuardado(payload);
 
       const avisoSkipped = (payload._skipped || []).length
         ? `\n⚠️ No se pudieron leer: ${payload._skipped.join(", ")}`
