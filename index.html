@@ -1503,6 +1503,12 @@
         return;
       }
 
+      // Antes: si este escaneo fallaba, "Ver detalle" seguía mostrando el ticket ANTERIOR y parecía que
+      // el sistema había leído otros productos. Ahora se limpia en cuanto llega un ticket nuevo.
+      ticketItemsUi = []; ticketItemsInv = [];
+      if($("btnVerDetalle")) $("btnVerDetalle").disabled = true;
+      if(detailBg) detailBg.style.display = "none";
+
       const payloadBox = $("qrPayload");
       if(payloadBox) payloadBox.value = texto;
 
