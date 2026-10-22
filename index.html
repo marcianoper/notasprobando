@@ -339,8 +339,8 @@
         </div>
 
         <div>
-          <label>Teléfono</label>
-          <input id="tel" inputmode="numeric" placeholder="4621234567" />
+          <label>Teléfono (opcional)</label>
+          <input id="tel" inputmode="numeric" placeholder="4621234567 (opcional)" />
           <div class="muted" id="telHint">Se usa para registrar. No se mostrará después (operador).</div>
         </div>
       </div>
@@ -599,6 +599,18 @@
     return Number.isFinite(v) ? v : NaN;
   }
   function cleanPhone(s){ return String(s||"").replace(/\D/g,"").slice(-10); }
+
+  // ===== Clientes sin teléfono =====
+  // En la base el teléfono es obligatorio y único, así que a un cliente sin teléfono se le guarda
+  // una clave interna SIN letras de número (ej. "SINTEL-KQWZ…"). En pantalla sale como "Sin teléfono".
+  function esSinTel(t){ return /^SINTEL-/.test(String(t || "")); }
+  function nuevoSinTel(){
+    const L = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    let r = "";
+    for(let i = 0; i < 10; i++) r += L[Math.floor(Math.random() * L.length)];
+    return "SINTEL-" + r;
+  }
+  function telVisible(t){ return esSinTel(t) ? "" : String(t || ""); }
   function escapeHtml(s){
     return String(s||"")
       .replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
@@ -654,7 +666,7 @@
       if(telHint) telHint.textContent = "Admin puede ver y editar.";
     }else{
       $("tel").type = "text";
-      if(telHint) telHint.textContent = "Captura teléfono.";
+      if(telHint) telHint.textContent = "Teléfono opcional: puedes dejarlo vacío.";
     }
   }
 
@@ -1098,7 +1110,7 @@
     suggestList.innerHTML = currentSuggestions.map((c, idx) => `
       <div class="suggestItem ${idx === suggestActiveIndex ? "active" : ""}" data-id="${escapeHtml(c.id)}">
         <div class="nm">${escapeHtml(c.nombre || "—")}</div>
-        <div class="ph">${escapeHtml(role === "admin" ? (c.telefono || "Sin teléfono") : maskPhone(c.telefono || ""))}</div>
+        <div class="ph">${escapeHtml(role === "admin" ? (telVisible(c.telefono) || "Sin teléfono") : (telVisible(c.telefono) ? maskPhone(c.telefono) : "Sin teléfono"))}</div>
         <div class="meta">
           <span>Puntos: ${Number(c.puntos || 0)}</span>
           <span>Saldo: ${Number(c.saldo_kg || 0).toFixed(3)} kg</span>
@@ -1150,7 +1162,7 @@
     return `
       <div class="pickerCard" data-id="${escapeHtml(c.id)}">
         <div class="nm">${escapeHtml(c.nombre || "—")}</div>
-        <div class="ph">${escapeHtml(role === "admin" ? (c.telefono || "Sin teléfono") : maskPhone(c.telefono || ""))}</div>
+        <div class="ph">${escapeHtml(role === "admin" ? (telVisible(c.telefono) || "Sin teléfono") : (telVisible(c.telefono) ? maskPhone(c.telefono) : "Sin teléfono"))}</div>
         <div class="meta">
           <span>Puntos: ${Number(c.puntos || 0)}</span>
           <span>Saldo: ${Number(c.saldo_kg || 0).toFixed(3)} kg</span>
@@ -1211,7 +1223,7 @@
 
     if(role === "admin"){
       $("tel").type = "text";
-      $("tel").value = c.telefono || "";
+      $("tel").value = telVisible(c.telefono);
     }else{
       $("tel").type = "password";
       $("tel").value = "";
@@ -1880,7 +1892,47 @@
     const tel = cleanPhone(telInput);
 
     if(!nombre) throw new Error("Nombre es obligatorio.");
-    if(tel.length !== 10) throw new Error("Teléfono inválido (debe ser de 10 dígitos).");
+
+    // El teléfono ya NO es obligatorio. Si escriben algo, sí tiene que ser de 10 dígitos.
+    const soloDigitos = String(telInput).replace(/\D/g, "");
+    if(soloDigitos.length > 0 && tel.length !== 10) throw new Error("Teléfono inválido (debe ser de 10 dígitos) o déjalo vacío.");
+
+    const mismoNombre = (clientsCache || []).find(c => normalizeLine(c.nombre || "").toLowerCase() === nombre.toLowerCase());
+
+    if(!tel){
+      // Sin teléfono: si ya existe un cliente con ese nombre, se usa ese (no se duplica)
+      if(mismoNombre){
+        await selectClient(mismoNombre, true);
+        setMsg("ok", `Ya existía "${mismoNombre.nombre}" — seleccionado ✅`);
+        return;
+      }
+      const ins = await sb.from(T_CLIENTES)
+        .insert({ nombre, telefono: nuevoSinTel() })
+        .select("id,telefono,nombre,puntos,saldo_kg")
+        .single();
+      if(ins.error) throw ins.error;
+      await loadNameDatalist();
+      await selectClient(ins.data, true);
+      setMsg("ok", "Cliente creado sin teléfono ✅");
+      return;
+    }
+
+    // Tiene teléfono y existe un cliente con ese nombre SIN teléfono: se le pone el teléfono a ese mismo
+    // (antes se habría creado otro cliente repetido).
+    const yaTieneEseTel = (clientsCache || []).some(c => cleanPhone(c.telefono || "") === tel);
+    if(mismoNombre && esSinTel(mismoNombre.telefono) && !yaTieneEseTel){
+      const up = await sb.from(T_CLIENTES)
+        .update({ telefono: tel })
+        .eq("id", mismoNombre.id)
+        .select("id,telefono,nombre,puntos,saldo_kg")
+        .single();
+      if(up.error) throw up.error;
+      await loadNameDatalist();
+      await selectClient(up.data, true);
+      if(role !== "admin"){ $("tel").value = ""; $("tel").type = "password"; }
+      setMsg("ok", "Teléfono agregado al cliente ✅");
+      return;
+    }
 
     // Antes: si el teléfono ya era de OTRO cliente, se le cambiaba el nombre sin avisar.
     const dueno = (clientsCache || []).find(c => cleanPhone(c.telefono || "") === tel);
