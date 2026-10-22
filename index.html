@@ -145,6 +145,23 @@
     .toast.bad{border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.08)}
     .toast .t{font-weight:1200}
     .toast .d{margin-top:6px;color:var(--muted);font-size:12px;white-space:pre-wrap}
+    /* Cuadro para capturar piezas de pata (solo sale si el ticket trae pata blanca o morena) */
+    #pzBg{position:fixed;inset:0;z-index:1000;background:rgba(2,6,23,.55);display:none;align-items:center;justify-content:center;padding:16px}
+    #pzBox{width:100%;max-width:420px;background:#fff;border-radius:22px;box-shadow:0 24px 70px rgba(2,6,23,.35);padding:18px}
+    #pzBox h3{margin:0;font-size:20px}
+    #pzBox .sub{margin:4px 0 14px;color:var(--muted);font-size:13px;font-weight:700}
+    .pzRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-radius:16px;border:2px solid var(--line);margin-bottom:10px}
+    .pzRow.morena{background:rgba(120,72,30,.07);border-color:rgba(120,72,30,.30)}
+    .pzRow.blanca{background:rgba(14,165,233,.06);border-color:rgba(14,165,233,.30)}
+    .pzRow b{display:block;font-size:18px}
+    .pzRow small{color:var(--muted);font-weight:800}
+    .pzRow input{width:110px;font-size:30px;font-weight:900;text-align:center;padding:8px;border-radius:14px;border:2px solid var(--line);font-variant-numeric:tabular-nums}
+    .pzRow input:focus{outline:none;border-color:var(--brand);box-shadow:var(--ring)}
+    #pzMsg{min-height:18px;font-size:13px;font-weight:800;color:#b45309;margin:2px 0 10px;white-space:pre-wrap}
+    #pzMsg.bad{color:var(--bad)}
+    .pzBtns{display:flex;gap:10px}
+    .pzBtns button{flex:1;font-size:17px;font-weight:900;padding:14px;border-radius:14px;border:1px solid var(--line);cursor:pointer;background:#f1f5f9}
+    .pzBtns .ok{background:linear-gradient(180deg,var(--brand2),var(--brand));color:#052e16;border:0}
     .adminOnly{display:block}
     .opOnly{display:none}
     body.role-op #roleChip, body.role-op #btnCambiarUsuario{ display:none !important; }
@@ -1238,7 +1255,11 @@
     if(!Number.isFinite(kg) || kg < 0) throw new Error("Total kg inválido.");
 
     const items = (ticketItemsInv || [])
-      .map(it => ({ sku: String(it.sku||"").trim(), kg: Number(it.kg)||0 }))
+      .map(it => {
+        const o = { sku: String(it.sku||"").trim(), kg: Number(it.kg)||0 };
+        if(Number.isInteger(it.pzas)) o.pzas = it.pzas;
+        return o;
+      })
       .filter(it => it.sku && Number.isFinite(it.kg) && it.kg > 0);
 
     const { data, error } = await sb.rpc("guardar_venta_cliente_qr", {
@@ -1300,6 +1321,107 @@
   // el sistema rescataba los productos que alcanzaba a leer y los guardaba como OTRO ticket.
   // Luego llegaba la lectura buena y se guardaba otra vez -> la pata morena salía vendida 2 o 3 veces.
   // Ahora una lectura incompleta NO se guarda: se pide volver a escanear.
+  // ===== Piezas de pata =====
+  // Si el ticket trae pata blanca o pata morena, el operador TIENE que poner cuántas piezas son
+  // antes de guardar. Las piezas se guardan en ventas_items.piezas.
+  // Una pata pesa ~2 kg (historial de Mostrador). Si lo capturado da un peso por pata muy raro, se pide confirmar.
+  const PATAS = [["PATA_BLANCA","Pata blanca","blanca"],["PATA_MORENA","Pata morena","morena"]];
+  const KG_PATA_MIN = 1.2, KG_PATA_MAX = 3.5;
+
+  function pedirPiezasPatas(itemsUi){
+    const kg = {};
+    for(const it of (itemsUi || [])){
+      if(PATAS.some(([sku]) => sku === it.sku)) kg[it.sku] = (kg[it.sku] || 0) + (Number(it.kg) || 0);
+    }
+    const lista = PATAS.filter(([sku]) => kg[sku] > 0);
+    if(!lista.length) return Promise.resolve({});   // sin patas: no se pregunta nada
+
+    let bg = document.getElementById("pzBg");
+    if(!bg){
+      bg = document.createElement("div");
+      bg.id = "pzBg";
+      document.body.appendChild(bg);
+    }
+    bg.innerHTML = `
+      <div id="pzBox" role="dialog" aria-modal="true">
+        <h3>🦶 ¿Cuántas piezas son?</h3>
+        <div class="sub">Cliente: ${escapeHtml(currentClient?.nombre || "—")} · cuenta las patas que se lleva</div>
+        ${lista.map(([sku, nombre, cls]) => `
+          <label class="pzRow ${cls}">
+            <span><b>${nombre}</b><small>${kg[sku].toFixed(2)} kg</small></span>
+            <input data-sku="${sku}" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="pzas"/>
+          </label>`).join("")}
+        <div id="pzMsg"></div>
+        <div class="pzBtns">
+          <button type="button" id="pzCancel">Cancelar</button>
+          <button type="button" class="ok" id="pzOk">Guardar ticket</button>
+        </div>
+      </div>`;
+    bg.style.display = "flex";
+
+    const inputs = [...bg.querySelectorAll("input[data-sku]")];
+    const msg = bg.querySelector("#pzMsg");
+    let avisoMostrado = "";
+    setTimeout(() => inputs[0]?.focus(), 50);
+
+    return new Promise(resolve => {
+      const cerrar = (res) => { bg.style.display = "none"; bg.innerHTML = ""; resolve(res); };
+
+      const intentar = () => {
+        const res = {};
+        const raros = [];
+        for(const inp of inputs){
+          const n = Number(inp.value);
+          if(!/^\d+$/.test(inp.value) || n < 1){
+            msg.className = "bad";
+            msg.textContent = "Pon cuántas piezas de " + (inp.dataset.sku === "PATA_BLANCA" ? "pata blanca" : "pata morena") + " son.";
+            inp.focus(); inp.select();
+            return;
+          }
+          res[inp.dataset.sku] = n;
+          const kgPza = kg[inp.dataset.sku] / n;
+          if(kgPza < KG_PATA_MIN || kgPza > KG_PATA_MAX){
+            raros.push(`${inp.dataset.sku === "PATA_BLANCA" ? "Pata blanca" : "Pata morena"}: ${kg[inp.dataset.sku].toFixed(2)} kg en ${n} pzas = ${kgPza.toFixed(2)} kg por pata`);
+          }
+        }
+        // Si el peso por pata no cuadra, se avisa una vez; si vuelven a presionar Guardar, se acepta.
+        const firma = JSON.stringify(res);
+        if(raros.length && avisoMostrado !== firma){
+          avisoMostrado = firma;
+          msg.className = "";
+          msg.textContent = "⚠️ Revisa, no cuadra (normal ~2 kg por pata):\n" + raros.join("\n") + "\nSi está bien, presiona Guardar otra vez.";
+          return;
+        }
+        cerrar(res);
+      };
+
+      inputs.forEach((inp, k) => {
+        inp.addEventListener("input", () => { inp.value = inp.value.replace(/\D+/g, "").slice(0, 4); msg.textContent = ""; });
+        inp.addEventListener("keydown", e => {
+          if(e.key === "Enter"){
+            e.preventDefault();
+            if(k < inputs.length - 1 && !inputs[k + 1].value) inputs[k + 1].focus();
+            else intentar();
+          }else if(e.key === "Escape"){ cerrar(null); }
+        });
+      });
+      bg.querySelector("#pzOk").addEventListener("click", intentar);
+      bg.querySelector("#pzCancel").addEventListener("click", () => cerrar(null));
+    });
+  }
+
+  // Pone las piezas en la primera línea de cada pata (si el ticket trae 2 líneas de la misma pata,
+  // la segunda queda en 0 para que la suma por día salga bien).
+  function ponerPiezas(items, piezas){
+    const usados = new Set();
+    return (items || []).map(it => {
+      if(!(it.sku in piezas)) return it;
+      const pzas = usados.has(it.sku) ? 0 : piezas[it.sku];
+      usados.add(it.sku);
+      return { ...it, pzas };
+    });
+  }
+
   function revisarLectura(texto, raw){
     const t = String(texto || "").trim();
 
@@ -1417,11 +1539,19 @@
         }
       }
 
+      const piezasPatas = await pedirPiezasPatas(payload._itemsUi);
+      if(piezasPatas === null){
+        vistosRecientes.delete(texto);
+        if(role === "admin") logAdmin("Cancelado: no se pusieron las piezas. El ticket NO se guardó.", "warnTxt");
+        else showOpToast("bad", "No se guardó", "Se canceló al poner las piezas. Vuelve a escanear el ticket.");
+        return;
+      }
+
       let fingerprint = ticketFingerprint(payload, 1);
 
       updateTotalsUI(payload, fingerprint);
       ticketItemsUi = payload._itemsUi || [];
-      ticketItemsInv = payload.items || [];
+      ticketItemsInv = ponerPiezas(payload.items || [], piezasPatas);
       $("btnVerDetalle").disabled = ticketItemsUi.length === 0;
 
       if(role === "admin") logAdmin("Descontando inventario y guardando venta…", "muted");
@@ -1451,6 +1581,9 @@
 
       recordarGuardado(payload);
 
+      const textoPiezas = Object.entries(piezasPatas)
+        .map(([sku, n]) => `\n🦶 ${sku === "PATA_BLANCA" ? "Pata blanca" : "Pata morena"}: ${n} pzas`).join("");
+
       const avisoSkipped = (payload._skipped || []).length
         ? `\n⚠️ No se pudieron leer: ${payload._skipped.join(", ")}`
         : "";
@@ -1460,12 +1593,12 @@
           "✅ LISTO\n" +
           `Venta guardada ✅ (ID: ${saveRes.venta_id})\n` +
           `Items: ${saveRes.itemsCount}\n` +
-          `Puntos ganados: ${saveRes.puntosGanados}` + avisoSkipped,
+          `Puntos ganados: ${saveRes.puntosGanados}` + textoPiezas + avisoSkipped,
           avisoSkipped ? "warnTxt" : "okTxt"
         );
       }else{
         const kg = $("kgAutoOp")?.value || "";
-        showOpToast(avisoSkipped ? "bad" : "ok", "✅ OK — Venta aplicada", `Cliente: ${currentClient?.nombre || "—"}\nTotal: ${kg} kg` + avisoSkipped);
+        showOpToast(avisoSkipped ? "bad" : "ok", "✅ OK — Venta aplicada", `Cliente: ${currentClient?.nombre || "—"}\nTotal: ${kg} kg` + textoPiezas + avisoSkipped);
       }
 
       setTimeout(()=>{
