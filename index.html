@@ -548,6 +548,26 @@
   let lastClientQrUrl = "";
 
   const BOX_FULL_KG = 27.22;
+
+  // ===== Tickets de la báscula de bodega con QR corto (TB:XXXXXXX) =====
+  // El QR ya no trae los productos: solo un ID. Los productos se piden a Supabase (tabla tickets_bodega).
+  // Acepta lo que manda la pistola con teclado cambiado o Bloq Mayús: "TB:ABC", "tbÑabc", "TB;ABC".
+  function idTicketBodega(texto){
+    const m = String(texto || "").trim().match(/^T\s*B\s*[:Ññ;]\s*([A-Za-z0-9-]{3,32})$/i);
+    return m ? m[1].toUpperCase() : "";
+  }
+  // Regresa el ticket en el mismo formato que un QR viejo ({qr_id, items:[{producto, cantidad}]})
+  // para que pase por la misma lógica de siempre. Regresa null si el ID no existe.
+  async function traerTicketBodega(id){
+    const { data, error } = await sb.rpc("obtener_ticket_bodega", { p_id: id });
+    if(error) throw new Error(error.message);
+    if(!data) return null;
+    return {
+      qr_id: "TB_" + data.id,   // huella del ticket: QRID_TB_<ID> (igual en Mostrador y en oficina)
+      items: (data.items || []).map(i => ({ producto: i.producto, cantidad: String(i.kg ?? i.piezas ?? "") }))
+    };
+  }
+
   const $ = (id)=>document.getElementById(id);
 
   const roleChip = $("roleChip");
@@ -1524,9 +1544,21 @@
       const payloadBox = $("qrPayload");
       if(payloadBox) payloadBox.value = texto;
 
-      const raw = safeParseJson(texto);
-
-      const problema = revisarLectura(texto, raw);
+      let raw, problema = "";
+      const tbId = idTicketBodega(texto);
+      if(tbId){
+        // QR corto: los productos vienen de Supabase, no del texto escaneado
+        raw = await traerTicketBodega(tbId);
+        if(!raw){
+          vistosRecientes.delete(texto);
+          if(role === "admin") logAdmin(`❌ NO SE GUARDÓ — no existe TB:${tbId} en la base.\nPuede que la báscula todavía no lo haya mandado (sin internet). Espera un momento y vuelve a escanear.`, "badTxt");
+          else showOpToast("bad", "Ticket no encontrado — NO se guardó", `No existe TB:${tbId}.\nPuede que la báscula todavía no lo haya mandado. Espera un momento y vuelve a escanear.`);
+          return;
+        }
+      }else{
+        raw = safeParseJson(texto);
+        problema = revisarLectura(texto, raw);
+      }
       if(problema){
         vistosRecientes.delete(texto);
         if(role === "admin") logAdmin("❌ NO SE GUARDÓ — lectura incompleta.\n" + problema + "\nVuelve a escanear el ticket.\n\nTexto leído:\n" + texto, "badTxt");
@@ -1542,7 +1574,8 @@
         return;
       }
 
-      const parecido = pareceRepetido(payload);
+      // Con QR corto el ID ya es único: no hace falta comparar pesos con tickets recientes
+      const parecido = tbId ? null : pareceRepetido(payload);
       if(parecido){
         const seguir = window.confirm(
           "Este ticket se parece a uno que se acaba de guardar (mismo producto y mismo peso exacto):\n" +
@@ -1579,6 +1612,12 @@
         ? { duplicate:true }
         : await aplicarTicket(texto, payload, fingerprint);
 
+      if(saveRes.duplicate && tbId){
+        // Un ticket TB: es único: si ya se aplicó, es el mismo ticket escaneado otra vez. Nunca se cobra dos veces.
+        if(role === "admin") logAdmin(`Ticket TB:${tbId} ya estaba aplicado. No se guardó otra vez. ✅`, "okTxt");
+        else showOpToast("ok", "Ya procesado", `El ticket TB:${tbId} ya estaba aplicado ✅`);
+        return;
+      }
       if(saveRes.duplicate){
         const otro = window.confirm(
           "Este ticket YA se registró hoy.\n\n" +
@@ -1758,7 +1797,7 @@
   const GUN_IDLE_INCOMPLETO_MS = 1500; // espera más si el texto parece cortado (QR largo que la pistola manda lento)
 
   // ¿El texto de la pistola parece un ticket completo? (termina en ] o }, o en + / * si el teclado está cambiado)
-  function pareceCompleto(t){ return /[\]}+*]\s*$/.test(String(t||"").trim()); }
+  function pareceCompleto(t){ return /[\]}+*]\s*$/.test(String(t||"").trim()) || !!idTicketBodega(t); }
   let lastGunValue = "";
 
   function resetGunBuffer(){
